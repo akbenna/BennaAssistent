@@ -228,6 +228,22 @@ export async function haalProjectTellingen(): Promise<Record<string, number>> {
 }
 
 /**
+ * De documenten die Drive sinds kort heeft zien veranderen. Uitgesloten items
+ * blijven weg: daar staat alleen van vast dát ze zijn overgeslagen, en een lege
+ * regel op het scherm helpt niemand.
+ */
+export async function haalDocumenten(limiet = 6): Promise<Item[]> {
+  const { data, error } = await supabase
+    .from("items")
+    .select("id,source_id,extern_id,thread_id,deeplink,afzender,onderwerp,samenvatting,ontvangen_op,uitgesloten,uitsluitreden,sources!inner(kind)")
+    .eq("sources.kind", "drive").eq("uitgesloten", false)
+    .order("ontvangen_op", { ascending: false }).limit(limiet)
+    .returns<Item[]>();
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/**
  * Hoeveel taken je op elk van de afgelopen `dagen` dagen hebt afgerond.
  * Voor de strook in de hero: één dag zegt niets, veertien dagen zeggen of je
  * bezig bent. De datum wordt in Amsterdam geteld en niet in UTC, anders valt

@@ -5,7 +5,7 @@ import { Sfeer, type SfeerSoort } from "../components/sfeer";
 import { TaakKaart } from "../components/TaakKaart";
 import { TaakPaneel } from "../components/TaakPaneel";
 import { datumLang, deadlineToon, relatief, tijdKort, vandaag } from "../lib/format";
-import { haalAfrondingenPerDag, haalDagoverzicht, haalTaken, haalTellingen } from "../lib/data";
+import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalTaken, haalTellingen } from "../lib/data";
 
 /* De groet volgt het uur in Amsterdam en niet dat van de browser: wie vanuit
    een andere tijdzone inlogt kijkt naar een Nederlandse werkdag. */
@@ -26,6 +26,7 @@ export function Vandaag() {
   const tellingen = useAsync(() => haalTellingen(), [ronde]);
   const overzicht = useAsync(() => haalDagoverzicht(), [ronde]);
   const strook = useAsync(() => haalAfrondingenPerDag(14), [ronde]);
+  const documenten = useAsync(() => haalDocumenten(6), [ronde]);
   const nu = useAsync(
     () => haalTaken({ statussen: ["open", "antwoord_binnen"], deadlineTot: vandaag(), limiet: 25 }),
     [ronde],
@@ -150,6 +151,28 @@ export function Vandaag() {
           <div className="stapel">
             {(antwoorden.data ?? []).map((taak) => (
               <TaakKaart key={taak.id} taak={taak} bijKlik={() => setOpen(taak.id)} bijWijziging={ververs} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(documenten.data ?? []).length > 0 && (
+        <section className="sectie">
+          <header>
+            <h2>Documenten</h2>
+            <span className="aantal">{documenten.data?.length}</span>
+          </header>
+          <div className="kaart">
+            {(documenten.data ?? []).map((d) => (
+              <div className="brief-regel" key={d.id}>
+                <span className="tijd">{relatief(d.ontvangen_op)}</span>
+                <span className="groei">
+                  {d.deeplink
+                    ? <a href={d.deeplink} target="_blank" rel="noreferrer">{d.onderwerp}</a>
+                    : d.onderwerp}
+                  {d.samenvatting && <div className="mini">{d.samenvatting}</div>}
+                </span>
+              </div>
             ))}
           </div>
         </section>
