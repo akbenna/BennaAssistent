@@ -1,0 +1,24 @@
+project_id = "bennaassistent"
+
+# Aangeroepen door pg_cron of Google (eigen beveiliging via CRON_SECRET resp. OAuth-state)
+[functions.gmail-ingest]
+verify_jwt = false
+
+[functions.followup-check]
+verify_jwt = false
+
+[functions.daily-brief]
+verify_jwt = false
+
+[functions.google-oauth-callback]
+verify_jwt = false
+
+# Alleen voor de ingelogde eigenaar
+[functions.google-oauth-start]
+verify_jwt = true
+
+[functions.create-draft]
+verify_jwt = true
+
+[functions.send-draft]
+verify_jwt = true
