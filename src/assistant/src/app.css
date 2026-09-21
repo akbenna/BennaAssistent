@@ -432,6 +432,15 @@ button, input, select, textarea { font-family: inherit; font-size: 1rem; color: 
 .knop.kaal { border-color: transparent; background: transparent; padding: 0.35rem 0.5rem; }
 .knop.kaal:hover { background: var(--vlak2); border-color: transparent; }
 .knop.klein { padding: 4px 10px; font-size: 0.76rem; border-radius: 8px; }
+/* De knop van "inloggen met Google". Google schrijft voor dat hun merkteken in
+   vier kleuren op een witte of lichtgrijze ondergrond staat; op het groen van
+   .primair mag hij niet. Hij is hier toch de eerste keuze, dus krijgt hij meer
+   gewicht dan een gewone knop: hogere regel, zwaardere letter, stevigere rand. */
+.knop.google {
+  background: var(--vlak); border-color: var(--lijn2); color: var(--ink);
+  font-weight: 600; padding: 11px 16px; gap: 0.6rem;
+}
+.knop.google:hover { border-color: var(--k); }
 .knoppen { display: flex; flex-wrap: wrap; gap: 0.45rem; }
 
 /* Een rij knoppen die over de rand mag lopen op een telefoon, zodat acht
