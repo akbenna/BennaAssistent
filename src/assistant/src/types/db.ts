@@ -133,3 +133,36 @@ export interface Dagoverzicht {
 export interface TaakRij extends Taak {
   projects: { naam: string; kleur: string | null } | null;
 }
+
+/* ---------------------------------------------------- declaratiedata ----- */
+
+export interface DeclaratieImport {
+  id: string;
+  rapport: "05" | "09" | "25";
+  bestandsnaam: string | null;
+  praktijknummer: string | null;
+  periode: string | null;
+  stand_database: string | null;
+  aantal_regels: number;
+  created_at: string;
+}
+
+/**
+ * Eén maand uit de database-view `declaratie_maand`. De view telt 11119 niet
+ * mee bij de ingeschreven patiënten — die opslagwijktoeslag is een toeslag op
+ * bestaande inschrijvingen, geen aparte patiënt. Die regel staat met opzet in
+ * de database en niet hier, zodat geen enkele latere query eromheen kan.
+ */
+export interface DeclaratieMaand {
+  maand: string;
+  omzet: number | null;
+  ingeschreven: number | null;
+  opslagwijk: number | null;
+  consult_lang: number | null;
+  consult_middel: number | null;
+  consult_kort: number | null;
+  mi_omzet: number | null;
+  poh_ggz: number | null;
+  chirurgie: number | null;
+  intensieve_zorg: number | null;
+}
