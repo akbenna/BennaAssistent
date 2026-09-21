@@ -2,44 +2,56 @@ import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "../lib/supabase";
 
 /*
- * TWEE MANIEREN OM BINNEN TE KOMEN, EN WAAROM DE ENE VOOROP STAAT
+ * DRIE MANIEREN OM BINNEN TE KOMEN, IN DE VOLGORDE WAARIN ZE WERKEN
  *
- * Inloggen met Google is één tik en er komt geen mail aan te pas. De inloglink
- * werkt ook, maar hangt aan de mailserver van Supabase, en die laat maar een
- * paar berichten per uur door. Wie twee keer op de knop drukt omdat de eerste
- * mail niet meteen binnen is, zit voor een uur op slot — precies wat er gebeurde
- * op de avond dat deze pagina werd herschreven.
+ * Het wachtwoord staat vooraan, en dat is een keuze tegen de mode in. Een
+ * inloglink geldt als moderner, maar hij hangt aan de mailserver van Supabase,
+ * en die laat maar een paar berichten per uur door. Wie twee keer op de knop
+ * drukt omdat de eerste mail niet meteen binnen is, zit een uur buiten — dat
+ * gebeurde op de avond dat deze pagina werd herschreven, op een iPad, om half
+ * een 's nachts. Een wachtwoord dat de telefoon met Face ID invult is in de
+ * praktijk sneller én betrouwbaarder dan een link die door drie servers moet.
  *
- * De link blijft staan als achtervang, ingeklapt. Hij is de enige weg terug als
- * er ooit iets misgaat met de Google-koppeling, en dat is genoeg reden om hem
- * niet weg te halen.
+ * Google staat er tweede. Hij is prima, maar hij werkt pas als de client in
+ * Google Cloud Console en de provider in Supabase allebei zijn ingesteld, en
+ * dat zijn twee schermen buiten deze app.
  *
- * Dit staat los van de koppeling met Gmail en Agenda. Die loopt via een eigen
- * toestemming met een eigen vernieuwingstoken in de Vault, en blijft bestaan
- * ook als je hier met een mailtje binnenkomt. Inloggen zegt wie je bent; de
- * koppeling zegt waar de assistent bij mag.
+ * De inloglink blijft als laatste staan. Hij is de enige weg terug als je je
+ * wachtwoord kwijt bent en Google het laat afweten, en dat is genoeg reden om
+ * hem niet weg te halen.
+ *
+ * Dit alles staat los van de koppeling met Gmail en Agenda. Die loopt via een
+ * eigen toestemming met een eigen vernieuwingstoken in de Vault. Inloggen zegt
+ * wie je bent; de koppeling zegt waar de assistent bij mag.
  */
 
 /* Foutmeldingen van GoTrue komen in het Engels binnen en zeggen niet wat je
-   eraan kunt doen. De belangrijkste drie krijgen een Nederlandse uitleg. */
+   eraan kunt doen. De vier die je in de praktijk treft krijgen uitleg. */
 function leesbaar(bericht: string): string {
   const b = bericht.toLowerCase();
+  if (b.includes("invalid login credentials")) {
+    return "Dat e-mailadres en wachtwoord horen niet bij elkaar. Weet je het wachtwoord niet meer, "
+      + "vraag dan onderaan een inloglink aan.";
+  }
   if (b.includes("rate limit")) {
     return "Er zijn de afgelopen tijd te veel inloglinks aangevraagd. Kijk in je mailbox: "
-      + "waarschijnlijk staat er al een geldige link. Anders is inloggen met Google de snelste weg.";
+      + "waarschijnlijk staat er al een geldige link. Inloggen met een wachtwoord kent deze limiet niet.";
   }
   if (b.includes("only request this after")) {
     return "Nog even wachten — een nieuwe link mag pas na een halve minuut.";
   }
   if (b.includes("provider is not enabled")) {
-    return "Inloggen met Google staat nog niet aan in Supabase. Gebruik voor nu de inloglink per mail.";
+    return "Inloggen met Google staat nog niet aan in Supabase. Gebruik je wachtwoord of een inloglink.";
   }
   return bericht;
 }
 
+type Stand = "leeg" | "wachtwoord" | "google" | "link" | "verstuurd";
+
 export function Login() {
   const [email, setEmail] = useState("");
-  const [stand, setStand] = useState<"leeg" | "bezig" | "google" | "verstuurd">("leeg");
+  const [wachtwoord, setWachtwoord] = useState("");
+  const [stand, setStand] = useState<Stand>("leeg");
   const [fout, setFout] = useState<string | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
 
@@ -54,6 +66,21 @@ export function Login() {
       history.replaceState(null, "", window.location.pathname);
     }
   }, []);
+
+  async function metWachtwoord(e: FormEvent) {
+    e.preventDefault();
+    setStand("wachtwoord");
+    setFout(null);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: wachtwoord,
+    });
+    if (error) {
+      setFout(leesbaar(error.message));
+      setStand("leeg");
+    }
+    // Bij succes neemt de sessieprovider het over en verdwijnt dit scherm.
+  }
 
   async function metGoogle() {
     setStand("google");
@@ -72,12 +99,11 @@ export function Login() {
       setFout(leesbaar(error.message));
       setStand("leeg");
     }
-    // Bij succes verlaat de browser deze pagina; er valt hier niets meer te doen.
   }
 
-  async function verstuurLink(e: FormEvent) {
+  async function metLink(e: FormEvent) {
     e.preventDefault();
-    setStand("bezig");
+    setStand("link");
     setFout(null);
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
@@ -90,6 +116,8 @@ export function Login() {
     }
     setStand("verstuurd");
   }
+
+  const bezig = stand !== "leeg";
 
   return (
     <main style={{ minHeight: "100%", display: "grid", placeItems: "center", padding: "1.5rem" }}>
@@ -106,20 +134,30 @@ export function Login() {
           <div className="kaart">
             <h2 style={{ fontSize: "1.05rem" }}>Kijk in je mail</h2>
             <p className="klein" style={{ marginBottom: 0 }}>
-              Er staat een inloglink in je inbox op <strong>{email}</strong>. Die opent de app meteen;
-              een wachtwoord heb je niet nodig. Komt hij niet aan, kijk dan in de map ongewenste post.
+              Er staat een inloglink in je inbox op <strong>{email}</strong>. Die opent de app meteen.
+              Komt hij niet aan, kijk dan in de map ongewenste post.
             </p>
           </div>
         ) : (
           <div className="kaart">
-            <button type="button" className="knop google" style={{ width: "100%" }}
-              disabled={stand !== "leeg"} onClick={() => void metGoogle()}>
-              <GoogleMerk />
-              {stand === "google" ? "Even doorverwijzen…" : "Inloggen met Google"}
-            </button>
-            <p className="mini" style={{ margin: "0.65rem 0 0", textAlign: "center" }}>
-              Hetzelfde account waar je mail en agenda in staan.
-            </p>
+            {/* Eén formulier voor adres en wachtwoord, zodat iOS en Android het
+                als inlogpaar herkennen en met Face ID of vingerafdruk invullen.
+                Twee losse velden buiten een <form> doen ze niet. */}
+            <form onSubmit={(e) => void metWachtwoord(e)}>
+              <label className="veld">
+                <span>E-mailadres</span>
+                <input type="email" required autoComplete="username" value={email}
+                  onChange={(e) => setEmail(e.target.value)} placeholder="jij@voorbeeld.nl" />
+              </label>
+              <label className="veld">
+                <span>Wachtwoord</span>
+                <input type="password" required autoComplete="current-password" value={wachtwoord}
+                  onChange={(e) => setWachtwoord(e.target.value)} />
+              </label>
+              <button className="knop primair" style={{ width: "100%" }} type="submit" disabled={bezig}>
+                {stand === "wachtwoord" ? "Bezig…" : "Inloggen"}
+              </button>
+            </form>
 
             {fout && (
               <p className="klein" style={{ color: "var(--fout)", marginTop: "0.9rem", marginBottom: 0 }}>
@@ -127,22 +165,27 @@ export function Login() {
               </p>
             )}
 
-            <div style={{ borderTop: "1px solid var(--lijn)", marginTop: "1rem", paddingTop: "0.8rem" }}>
+            <div style={{ borderTop: "1px solid var(--lijn)", marginTop: "1.1rem", paddingTop: "0.9rem" }}>
+              <button type="button" className="knop google" style={{ width: "100%" }}
+                disabled={bezig} onClick={() => void metGoogle()}>
+                <GoogleMerk />
+                {stand === "google" ? "Even doorverwijzen…" : "Inloggen met Google"}
+              </button>
+
               {linkOpen ? (
-                <form onSubmit={(e) => void verstuurLink(e)}>
-                  <label className="veld">
-                    <span>E-mailadres</span>
-                    <input type="email" required autoComplete="email" value={email}
-                      onChange={(e) => setEmail(e.target.value)} placeholder="jij@voorbeeld.nl" />
-                  </label>
-                  <button className="knop" style={{ width: "100%" }} type="submit" disabled={stand !== "leeg"}>
-                    {stand === "bezig" ? "Bezig…" : "Stuur mij een inloglink"}
+                <form onSubmit={(e) => void metLink(e)} style={{ marginTop: "0.6rem" }}>
+                  <p className="mini" style={{ margin: "0 0 0.4rem" }}>
+                    Er gaat een link naar het adres hierboven. Supabase laat maar een paar mails
+                    per uur door, dus druk hooguit één keer.
+                  </p>
+                  <button className="knop" style={{ width: "100%" }} type="submit" disabled={bezig || !email.trim()}>
+                    {stand === "link" ? "Bezig…" : "Stuur mij een inloglink"}
                   </button>
                 </form>
               ) : (
-                <button type="button" className="knop kaal klein" style={{ width: "100%" }}
+                <button type="button" className="knop kaal klein" style={{ width: "100%", marginTop: "0.5rem" }}
                   onClick={() => setLinkOpen(true)}>
-                  Liever een inloglink per mail
+                  Wachtwoord kwijt? Stuur een inloglink
                 </button>
               )}
             </div>

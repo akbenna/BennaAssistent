@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync, useMelding } from "../components/ui";
 import { datumLang, relatief } from "../lib/format";
-import { roepFunctie } from "../lib/supabase";
+import { roepFunctie, supabase } from "../lib/supabase";
 import { useSessie } from "../lib/auth";
 import {
   bewaarFilter, bewaarSjabloon, haalBronnen, haalFilters, haalLogboek, haalSjablonen,
@@ -183,6 +183,7 @@ export function Instellingen() {
           <p className="mini">Sessie geopend op {datumLang(sessie?.user.last_sign_in_at ?? null)}.</p>
           <button className="knop" onClick={() => void afmelden()}>Afmelden</button>
         </div>
+        <Wachtwoord />
       </section>
     </>
   );
@@ -314,5 +315,74 @@ function SjabloonLijst({ sjablonen, bijWijziging }: { sjablonen: Sjabloon[]; bij
         </div>
       )}
     </>
+  );
+}
+
+/*
+ * WACHTWOORD WIJZIGEN
+ *
+ * Staat hier zodat het instellen van een wachtwoord nooit meer via de SQL-editor
+ * hoeft. Twee velden en geen "huidig wachtwoord" ervoor: je bent al ingelogd, en
+ * GoTrue controleert de sessie. Wel twee keer intikken — een typefout in een
+ * wachtwoord dat je daarna niet meer ziet, sluit je buiten.
+ */
+function Wachtwoord() {
+  const meld = useMelding();
+  const [open, setOpen] = useState(false);
+  const [een, setEen] = useState("");
+  const [twee, setTwee] = useState("");
+  const [bezig, setBezig] = useState(false);
+
+  const kort = een.length > 0 && een.length < 10;
+  const ongelijk = twee.length > 0 && een !== twee;
+  const kan = een.length >= 10 && een === twee && !bezig;
+
+  async function bewaar() {
+    setBezig(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: een });
+      if (error) throw new Error(error.message);
+      setEen("");
+      setTwee("");
+      setOpen(false);
+      meld("Wachtwoord gewijzigd.");
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    } finally {
+      setBezig(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="knop klein" style={{ marginTop: "0.6rem" }} onClick={() => setOpen(true)}>
+        Wachtwoord instellen of wijzigen
+      </button>
+    );
+  }
+
+  return (
+    <div className="kaart" style={{ marginTop: "0.6rem" }}>
+      <label className="veld">
+        <span>Nieuw wachtwoord (minstens tien tekens)</span>
+        <input type="password" autoComplete="new-password" value={een}
+          onChange={(e) => setEen(e.target.value)} />
+      </label>
+      <label className="veld">
+        <span>Nog een keer</span>
+        <input type="password" autoComplete="new-password" value={twee}
+          onChange={(e) => setTwee(e.target.value)} />
+      </label>
+      {kort && <p className="mini" style={{ color: "var(--let)" }}>Nog wat langer, minstens tien tekens.</p>}
+      {ongelijk && <p className="mini" style={{ color: "var(--fout)" }}>De twee komen niet overeen.</p>}
+      <div className="knoppen">
+        <button className="knop primair klein" disabled={!kan} onClick={() => void bewaar()}>
+          {bezig ? "Bezig…" : "Bewaren"}
+        </button>
+        <button className="knop klein" onClick={() => { setOpen(false); setEen(""); setTwee(""); }}>
+          Annuleren
+        </button>
+      </div>
+    </div>
   );
 }
