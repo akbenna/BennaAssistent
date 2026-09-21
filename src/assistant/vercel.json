@@ -3,5 +3,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [{ "source": "/((?!assets/|icons/|manifest.webmanifest|favicon.svg).*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/((?!assets/|icons/|manifest.webmanifest|favicon.svg|privacy.html|voorwaarden.html).*)", "destination": "/index.html" }]
 }
