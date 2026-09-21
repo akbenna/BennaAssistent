@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacyverklaring — BennaAssistent</title>
+<meta name="description" content="Hoe BennaAssistent omgaat met gegevens uit Gmail, Google Agenda en Google Drive." />
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root {
+    color-scheme: light dark;
+    --papier: #fbfaf8; --inkt: #1b1a18; --zacht: #5d5a54;
+    --lijn: #e2ded6; --accent: #b4531f; --vlak: #f4f1ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --papier: #171614; --inkt: #eceae5; --zacht: #a29d94;
+      --lijn: #2f2d29; --accent: #e08a4f; --vlak: #201e1b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--papier); color: var(--inkt);
+    font: 17px/1.65 ui-serif, Georgia, "Times New Roman", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 42rem; margin: 0 auto; padding: 4rem 16px 6rem; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .4rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.15rem; margin: 2.6rem 0 .6rem; letter-spacing: -.005em; }
+  p { margin: 0 0 1rem; }
+  a { color: var(--accent); }
+  .datum { color: var(--zacht); font-size: .9rem; margin-bottom: 2.4rem; }
+  .kader {
+    background: var(--vlak); border: 1px solid var(--lijn); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1.4rem 0;
+  }
+  .kader p:last-child { margin-bottom: 0; }
+  code { font: .88em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--vlak); padding: .1em .35em; border-radius: 4px; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--lijn); color: var(--zacht); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacyverklaring</h1>
+  <p class="datum">BennaAssistent · laatst gewijzigd 21 september 2026</p>
+
+  <p>BennaAssistent is een persoonlijke werkassistent, gebouwd voor en gebruikt door één persoon: A. Bennaghmouch, huisarts te Nederland. De toepassing leest e-mail, agenda en documenten van die ene Google-account, vat ze samen en zet ze om in taken en conceptantwoorden. Er is geen aanmeldmogelijkheid voor derden en er worden geen gegevens van andere gebruikers verwerkt.</p>
+
+  <h2>Welke Google-gegevens worden gebruikt</h2>
+  <p>Na uitdrukkelijke toestemming vraagt de toepassing toegang tot Gmail (lezen, labelen en verzenden namens de gebruiker), tot afspraken in Google Agenda en tot bestanden in Google Drive, uitsluitend om te lezen. Die toegang dient één doel: een dagoverzicht samenstellen, openstaande acties herkennen en concepten voorbereiden die de gebruiker zelf goedkeurt. Berichten worden nooit automatisch verstuurd; elk concept vereist een handmatige bevestiging.</p>
+  <p>Google-gegevens worden niet verkocht, niet gedeeld met adverteerders en niet gebruikt om reclame te tonen of modellen mee te trainen.</p>
+
+  <h2>Waar de gegevens staan</h2>
+  <p>De samenvattingen, taken en verwijzingen worden bewaard in een Supabase-project in de Europese Unie (regio Ierland, <code>eu-west-1</code>), op een database met row level security waarop alleen het account van de gebruiker rechten heeft. De OAuth-tokens van Google liggen versleuteld in de Supabase Vault en zijn niet leesbaar vanuit de webtoepassing; alleen de serverfuncties kunnen ze uitlezen om namens de gebruiker bij Google aan te kloppen.</p>
+
+  <h2>Het taalmodel</h2>
+  <p>Voor het samenvatten en het opstellen van concepten gebruikt de toepassing de Claude-API van Anthropic. Daar gaat alleen naartoe wat voor die ene opdracht nodig is, en pas nadat een privacyfilter eroverheen is gegaan. Anthropic gebruikt gegevens uit API-aanroepen niet om modellen mee te trainen.</p>
+
+  <div class="kader">
+    <p><strong>Het filter is bewust streng.</strong> Berichten van of aan beveiligde zorgdomeinen zoals Zorgmail, ZorgDomein en eZorg worden hoe dan ook uitgesloten, net als berichten die herkenbaar patiëntinformatie bevatten: een burgerservicenummer dat door de elfproef komt, een geboortedatum, een ICPC-code, een labuitslag, een specialisten- of ontslagbrief. Die regels staan vast in de code en kunnen niet via de instellingen worden uitgezet. Daarnaast kan de gebruiker eigen afzenders, domeinen, labels en patronen uitsluiten.</p>
+  </div>
+
+  <p>Uitgesloten berichten bereiken het taalmodel dus niet. Van een uitgesloten bericht wordt alleen vastgelegd dát het is overgeslagen en op welke regel, niet de inhoud.</p>
+
+  <h2>Bewaren en verwijderen</h2>
+  <p>Gegevens blijven staan zolang de gebruiker ze nodig heeft en worden verwijderd zodra hij daarom vraagt. De koppeling met Google kan op elk moment worden verbroken, in de toepassing zelf onder Instellingen of rechtstreeks via <a href="https://myaccount.google.com/permissions" rel="noreferrer">myaccount.google.com/permissions</a>. Bij het verbreken van de koppeling worden de opgeslagen tokens verwijderd en verliest de toepassing per direct haar toegang tot Gmail, Agenda en Drive. Op verzoek wordt het volledige Supabase-project inclusief alle afgeleide gegevens gewist.</p>
+
+  <h2>Beveiliging</h2>
+  <p>Al het verkeer verloopt over TLS. De toepassing is afgeschermd met een inlog per e-mail; er is één geautoriseerd account. Serverfuncties draaien geïsoleerd en beschikken enkel over de sleutels die ze voor hun eigen taak nodig hebben.</p>
+
+  <h2>Contact</h2>
+  <p>Vragen over deze verklaring, over de verwerkte gegevens of een verzoek tot verwijdering: <a href="mailto:a.bennaghmouch@gmail.com">a.bennaghmouch@gmail.com</a>.</p>
+
+  <footer>
+    <p><a href="/">BennaAssistent</a> · <a href="/voorwaarden.html">Gebruiksvoorwaarden</a></p>
+  </footer>
+</main>
+</body>
+</html>
