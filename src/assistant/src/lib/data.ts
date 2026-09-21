@@ -227,6 +227,71 @@ export async function haalProjectTellingen(): Promise<Record<string, number>> {
   return uit;
 }
 
+/**
+ * Hoeveel taken je op elk van de afgelopen `dagen` dagen hebt afgerond.
+ * Voor de strook in de hero: één dag zegt niets, veertien dagen zeggen of je
+ * bezig bent. De datum wordt in Amsterdam geteld en niet in UTC, anders valt
+ * alles wat je na tweeën 's nachts afrondt op de verkeerde dag.
+ */
+export async function haalAfrondingenPerDag(dagen = 14): Promise<Array<{ datum: string; aantal: number }>> {
+  const start = new Date(Date.now() - (dagen - 1) * 86400000);
+  start.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await supabase
+    .from("tasks").select("afgerond_op")
+    .not("afgerond_op", "is", null).gte("afgerond_op", start.toISOString())
+    .returns<Array<{ afgerond_op: string }>>();
+  if (error) throw new Error(error.message);
+
+  const dag = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const tel: Record<string, number> = {};
+  for (const r of data ?? []) tel[dag.format(new Date(r.afgerond_op))] = (tel[dag.format(new Date(r.afgerond_op))] ?? 0) + 1;
+
+  const uit: Array<{ datum: string; aantal: number }> = [];
+  for (let i = dagen - 1; i >= 0; i--) {
+    const d = dag.format(new Date(Date.now() - i * 86400000));
+    uit.push({ datum: d, aantal: tel[d] ?? 0 });
+  }
+  return uit;
+}
+
+/**
+ * Een taak naar later schuiven. De status gaat naar open (een voorstel dat je
+ * uitstelt heb je impliciet geaccepteerd) en de deadline naar vandaag plus
+ * `dagen`. Nul dagen betekent vandaag.
+ */
+export async function stelUit(id: string, dagen: number): Promise<void> {
+  const d = new Date(Date.now() + dagen * 86400000);
+  const datum = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+  await werkTaakBij(id, { status: "open", deadline: datum });
+}
+
+/** Het e-mailadres uit "Frans Stelten <info@…>", in kleine letters. */
+export function adresUit(afzender: string | null | undefined): string | null {
+  if (!afzender) return null;
+  const m = afzender.match(/<([^>]+)>/);
+  const kaal = (m?.[1] ?? afzender).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kaal) ? kaal : null;
+}
+
+/**
+ * Deze afzender of dit hele domein voortaan overslaan. Het gaat als filterregel
+ * de database in, en het privacyfilter in de serverfuncties leest dezelfde
+ * tabel — het werkt dus meteen bij de volgende ophaalronde.
+ */
+export async function sluitUit(
+  soort: "afzender" | "domein",
+  waarde: string,
+  omschrijving: string | null = null,
+): Promise<void> {
+  const { error } = await supabase.from("filters")
+    .insert({ soort, waarde: waarde.toLowerCase(), omschrijving, actief: true });
+  if (error) throw new Error(error.message);
+}
+
 /** Bronberichten voor meerdere taken tegelijk, voor lijstweergaven. */
 export async function haalBronnenVoorTaken(taakIds: string[]): Promise<Record<string, Item[]>> {
   if (taakIds.length === 0) return {};
