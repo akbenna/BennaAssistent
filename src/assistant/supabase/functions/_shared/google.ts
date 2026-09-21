@@ -70,6 +70,7 @@ export async function g<T = any>(token: string, url: string, init: RequestInit =
 
 export const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 export const CAL = "https://www.googleapis.com/calendar/v3";
+export const DRIVE = "https://www.googleapis.com/drive/v3";
 
 // ---------- Berichten ontleden ----------
 

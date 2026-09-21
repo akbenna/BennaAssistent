@@ -26,7 +26,17 @@ async function maakBrief(admin: Admin, owner: string, datum: string) {
         titel: e.summary ?? "(zonder titel)", start: e.start?.dateTime ?? e.start?.date,
         locatie: e.location ?? null, link: e.htmlLink,
       }));
-    } catch (e) { inhoud.afspraken_fout = String(e).slice(0, 200); }
+      // De agenda werd wél uitgelezen maar nooit afgestempeld, dus bleef er
+      // "nog niet gesynct" staan op het instellingenscherm terwijl de afspraken
+      // gewoon in het dagoverzicht verschenen. Een bron die werkt hoort dat te
+      // laten zien; een bron die faalt ook, en daarom staat de fout er ook in.
+      await admin.from("sources")
+        .update({ laatst_gesynct: new Date().toISOString(), laatste_fout: null }).eq("id", cal.id);
+    } catch (e) {
+      const reden = String(e).slice(0, 200);
+      inhoud.afspraken_fout = reden;
+      await admin.from("sources").update({ laatste_fout: reden }).eq("id", cal.id);
+    }
   }
 
   const actief = () => admin.from("tasks").select("id,titel,deadline,prioriteit,status")
