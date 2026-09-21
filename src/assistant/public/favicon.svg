@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BennaAssistent">
+  <rect width="512" height="512" rx="113" fill="#1a1614"/>
+  <g fill="#f5f1ea">
+    <circle cx="113" cy="164" r="28" fill="#c2703d"/>
+    <rect x="190" y="145" width="210" height="38" rx="19" fill="#c2703d"/>
+    <circle cx="113" cy="256" r="28"/>
+    <rect x="190" y="237" width="169" height="38" rx="19"/>
+    <circle cx="113" cy="348" r="28"/>
+    <rect x="190" y="329" width="128" height="38" rx="19"/>
+  </g>
+</svg>
