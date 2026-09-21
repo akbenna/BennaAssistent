@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync, useMelding } from "./ui";
+import { Fout, Icoon, Leeg, Merkje, Skelet, Uitleg, useAsync, useMelding } from "./ui";
 import { PRIORITEIT_TEKST, STATUS_TEKST } from "./TaakKaart";
 import { afzenderNaam, datumKort, datumLang, relatief } from "../lib/format";
 import { roepFunctie } from "../lib/supabase";
@@ -11,6 +11,22 @@ import type { Prioriteit, TaakStatus } from "../types/db";
 
 const STATUSSEN: TaakStatus[] = ["voorstel", "open", "wacht_op_antwoord", "antwoord_binnen", "afgerond", "vervallen"];
 const PRIORITEITEN: Prioriteit[] = ["laag", "normaal", "hoog"];
+
+/* De vier manieren waarop het model kan meedenken. Ze staan hier met hun label
+   en met de reden dat ze bestaan: een knop zonder uitleg wordt niet gebruikt,
+   en bij een knop die een taalmodel aanroept hoort te staan wat eruit komt. */
+type Denkwijze = "stappen" | "samenvatting" | "hoeken" | "herschrijf";
+
+const DENKWIJZEN: Array<{ wijze: Denkwijze; label: string; uitleg: string; draad: boolean }> = [
+  { wijze: "stappen", label: "Hak in stappen", draad: false,
+    uitleg: "Hooguit vijf concrete stappen, elk beginnend met een werkwoord." },
+  { wijze: "samenvatting", label: "Vat de draad samen", draad: true,
+    uitleg: "Wat er is afgesproken, wat openstaat en bij wie de bal ligt." },
+  { wijze: "hoeken", label: "Geef drie invalshoeken", draad: true,
+    uitleg: "Drie werkelijk verschillende manieren om te reageren, met wat je ermee wint of riskeert." },
+];
+
+const TONEN = ["korter", "formeler", "warmer", "zakelijker", "stelliger"];
 
 interface Props {
   taakId: string;
@@ -31,6 +47,7 @@ export function TaakPaneel({ taakId, bijSluiten, bijWijziging }: Props) {
   const [instructie, setInstructie] = useState("");
   const [bezig, setBezig] = useState<string | null>(null);
   const [notitie, setNotitie] = useState("");
+  const [gedachte, setGedachte] = useState<{ wijze: Denkwijze; tekst: string } | null>(null);
 
   useEffect(() => {
     const opToets = (e: KeyboardEvent) => { if (e.key === "Escape") bijSluiten(); };
@@ -87,6 +104,40 @@ export function TaakPaneel({ taakId, bijSluiten, bijWijziging }: Props) {
       meld(e instanceof Error ? e.message : String(e), "fout");
     } finally {
       setBezig(null);
+    }
+  }
+
+  /**
+   * Meedenken. Wat terugkomt gaat níét automatisch de database in: het komt op
+   * het scherm met een knop eronder om het als notitie te bewaren. Het model
+   * stelt voor, de eigenaar legt vast — hetzelfde uitgangspunt als bij de
+   * concepten, en de reden dat er geen enkele automatische schrijfactie naar
+   * een taak toe bestaat.
+   */
+  async function denk(wijze: Denkwijze, extra: { concept?: string; toon?: string; draft_id?: string } = {}) {
+    setBezig(`denk-${wijze}`);
+    try {
+      const uit = await roepFunctie<{ tekst: string; wijze: Denkwijze }>("task-assist", {
+        task_id: taakId, wijze, ...extra,
+      });
+      if (wijze === "herschrijf" && concept) setConcept({ ...concept, tekst: uit.tekst });
+      else setGedachte({ wijze, tekst: uit.tekst });
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    } finally {
+      setBezig(null);
+    }
+  }
+
+  async function bewaarGedachte() {
+    if (!gedachte) return;
+    try {
+      await voegNotitieToe(taakId, gedachte.tekst, "onderzoek");
+      setGedachte(null);
+      notities.herlaad();
+      meld("Bewaard als notitie.");
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
     }
   }
 
@@ -200,6 +251,51 @@ export function TaakPaneel({ taakId, bijSluiten, bijWijziging }: Props) {
             </section>
 
             <section className="sectie">
+              <header>
+                <h3>Meedenken</h3>
+                {bezig?.startsWith("denk-") && <span className="aantal">bezig…</span>}
+              </header>
+              <div className="kaart">
+                <div className="knoprij">
+                  {DENKWIJZEN.map((d) => (
+                    <button key={d.wijze} className="knop klein" title={d.uitleg}
+                      disabled={bezig !== null || (d.draad && !heeftMailbron)}
+                      onClick={() => void denk(d.wijze)}>
+                      {Icoon.denk({})} {d.label}
+                    </button>
+                  ))}
+                </div>
+                {!heeftMailbron && (
+                  <p className="mini" style={{ margin: "0.6rem 0 0" }}>
+                    Samenvatten en invalshoeken vragen om een gekoppelde mailwisseling; die is er hier niet.
+                  </p>
+                )}
+
+                {gedachte && (
+                  <div style={{ marginTop: "0.8rem" }}>
+                    <div className="concept">{gedachte.tekst}</div>
+                    <div className="knoppen" style={{ marginTop: "0.6rem" }}>
+                      <button className="knop klein primair" onClick={() => void bewaarGedachte()}>
+                        Bewaar als notitie
+                      </button>
+                      <button className="knop klein" onClick={() => setGedachte(null)}>Weg ermee</button>
+                    </div>
+                  </div>
+                )}
+
+                <Uitleg kop="wat hier met je mail gebeurt">
+                  <p className="mini" style={{ margin: 0 }}>
+                    Bij samenvatten en invalshoeken wordt de mailwisseling opgehaald en aan Claude
+                    voorgelegd. Het privacyfilter draait er eerst overheen: zit er in één van de
+                    berichten iets dat op patiëntinformatie lijkt, dan wordt de hele aanvraag
+                    geweigerd en gaat er niets de deur uit. Hak in stappen gebruikt alleen de titel
+                    en de toelichting van de taak.
+                  </p>
+                </Uitleg>
+              </div>
+            </section>
+
+            <section className="sectie">
               <header><h3>Antwoord</h3></header>
               {!heeftMailbron ? (
                 <div className="kaart mini">Een concept kan alleen bij een taak met een gekoppelde mailwisseling.</div>
@@ -208,7 +304,19 @@ export function TaakPaneel({ taakId, bijSluiten, bijWijziging }: Props) {
                   {concept ? (
                     <>
                       <div className="concept">{concept.tekst}</div>
-                      <p className="mini" style={{ margin: "0.6rem 0" }}>
+                      {/* Herschrijven werkt óók het concept in Gmail bij. Alleen het
+                          scherm veranderen zou betekenen dat "versturen" de oude tekst
+                          pakt, en dat merk je pas als de mail de deur uit is. */}
+                      <p className="mini" style={{ margin: "0.6rem 0 0.3rem" }}>Anders van toon:</p>
+                      <div className="chips">
+                        {TONEN.map((t) => (
+                          <button key={t} className="chip" disabled={bezig !== null}
+                            onClick={() => void denk("herschrijf", { concept: concept.tekst, toon: t, draft_id: concept.id })}>
+                            {bezig === "denk-herschrijf" ? "…" : t}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mini" style={{ margin: "0.7rem 0" }}>
                         Het concept staat in Gmail. Pas het daar aan als je wilt; versturen kan hier.
                       </p>
                       <div className="knoppen">
