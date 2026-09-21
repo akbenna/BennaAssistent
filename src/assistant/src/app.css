@@ -454,7 +454,12 @@ button, input, select, textarea { font-family: inherit; font-size: 1rem; color: 
 
 label.veld { display: block; margin-bottom: 0.7rem; }
 label.veld > span { display: block; margin-bottom: 0.25rem; font-size: 0.72rem; color: var(--grijs); }
-input[type="text"], input[type="email"], input[type="date"], input[type="number"], select, textarea {
+/* Opsommen per soort ging mis: `password` ontbrak, en zo'n veld viel terug op
+   de opmaak van de browser — een wit vlak van eigen breedte, in het donkere
+   thema meteen zichtbaar als fout. Nu andersom: alles wat een tekstveld is,
+   behalve de soorten die een eigen vorm hebben. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]),
+select, textarea {
   width: 100%; padding: 8px 11px;
   background: var(--vlak); border: 1px solid var(--lijn);
   border-radius: var(--radius-klein); outline: none;
