@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync, useMelding } from "../components/ui";
 import { datumLang, relatief } from "../lib/format";
 import { roepFunctie, supabase } from "../lib/supabase";
 import { useSessie } from "../lib/auth";
 import {
-  bewaarFilter, bewaarSjabloon, haalBronnen, haalFilters, haalLogboek, haalSjablonen,
-  verwijderFilter, verwijderSjabloon,
+  bewaarFilter, bewaarKoppeling, bewaarSjabloon, bewaarTerugkerend, haalBronnen, haalFilters,
+  haalKoppelingen, haalLogboek, haalSjablonen, haalTerugkerend,
+  verwijderFilter, verwijderKoppeling, verwijderSjabloon,
 } from "../lib/data";
-import type { FilterSoort, Sjabloon } from "../types/db";
+import type { FilterSoort, Koppeling, Sjabloon, TerugkerendRij } from "../types/db";
 
 const GOOGLE_MELDING: Record<string, string> = {
   gekoppeld: "Google is gekoppeld. De eerste mail wordt binnen tien minuten opgehaald.",
@@ -36,6 +37,8 @@ export function Instellingen() {
   const bronnen = useAsync(() => haalBronnen(), [ronde]);
   const filters = useAsync(() => haalFilters(), [ronde]);
   const sjablonen = useAsync(() => haalSjablonen(), [ronde]);
+  const koppelingen = useAsync(() => haalKoppelingen(true), [ronde]);
+  const ritmes = useAsync(() => haalTerugkerend(), [ronde]);
   const logboek = useAsync(() => haalLogboek(40), [ronde]);
 
   useEffect(() => {
@@ -153,6 +156,37 @@ export function Instellingen() {
           Voorbeelden van hoe jij schrijft. De assistent gebruikt ze als richtlijn voor toon en opbouw.
         </p>
         <SjabloonLijst sjablonen={sjablonen.data ?? []} bijWijziging={() => setRonde((r) => r + 1)} />
+      </section>
+
+      <section className="sectie" id="koppelingen">
+        <header>
+          <h2>Doorsteek</h2>
+          <span className="aantal">{(koppelingen.data ?? []).length}</span>
+        </header>
+        <p className="klein zacht">
+          De tegels op Vandaag. Eén blik, één klik naar de juiste pagina van het portaal
+          of naar een van je andere apps.
+        </p>
+        {koppelingen.laden && <Skelet aantal={2} />}
+        {!koppelingen.laden && (
+          <Doorsteek koppelingen={koppelingen.data ?? []} bijWijziging={() => setRonde((r) => r + 1)} />
+        )}
+      </section>
+
+      <section className="sectie" id="onderhoud">
+        <header>
+          <h2>Onderhoudsritme</h2>
+          <span className="aantal">{(ritmes.data ?? []).length}</span>
+        </header>
+        <p className="klein zacht">
+          Wat vanzelf terugkomt. Elke nacht kijkt de database of er iets aan de beurt is en
+          zet het als taak op je lijst. Valt een datum in het weekend, dan schuift hij naar
+          de eerstvolgende werkdag in plaats van over te slaan.
+        </p>
+        {ritmes.laden && <Skelet aantal={3} />}
+        {!ritmes.laden && (
+          <Onderhoud ritmes={ritmes.data ?? []} bijWijziging={() => setRonde((r) => r + 1)} />
+        )}
       </section>
 
       <section className="sectie">
@@ -383,6 +417,143 @@ function Wachtwoord() {
           Annuleren
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- doorsteek ------- */
+
+/* De snelkoppelingen die op Vandaag als tegels staan. */
+function Doorsteek({ koppelingen, bijWijziging }: { koppelingen: Koppeling[]; bijWijziging: () => void }) {
+  const meld = useMelding();
+  const [naam, setNaam] = useState("");
+  const [url, setUrl] = useState("");
+  const [omschrijving, setOmschrijving] = useState("");
+  const [groep, setGroep] = useState("");
+
+  const groepen = Array.from(new Set(koppelingen.map((k) => k.groep).filter((g): g is string => !!g)));
+
+  async function schakel(k: Koppeling) {
+    try {
+      await bewaarKoppeling({ ...k, actief: !k.actief });
+      bijWijziging();
+    } catch (e) { meld(e instanceof Error ? e.message : String(e), "fout"); }
+  }
+
+  async function weg(k: Koppeling) {
+    if (!window.confirm(`"${k.naam}" verwijderen?`)) return;
+    try {
+      await verwijderKoppeling(k.id);
+      bijWijziging();
+    } catch (e) { meld(e instanceof Error ? e.message : String(e), "fout"); }
+  }
+
+  async function voegToe(e: React.FormEvent) {
+    e.preventDefault();
+    if (!naam.trim() || !url.trim()) return;
+    try {
+      await bewaarKoppeling({
+        naam: naam.trim(), url: url.trim(),
+        omschrijving: omschrijving.trim() || null,
+        groep: groep.trim() || null,
+        volgorde: 100, actief: true,
+      });
+      setNaam(""); setUrl(""); setOmschrijving("");
+      bijWijziging();
+      meld("Toegevoegd.");
+    } catch (e2) { meld(e2 instanceof Error ? e2.message : String(e2), "fout"); }
+  }
+
+  return (
+    <div className="kaart">
+      {koppelingen.map((k) => (
+        <div className="brief-regel" key={k.id}>
+          <span className="groei klein">
+            {k.naam}
+            <div className="mini">{k.groep ? `${k.groep} · ` : ""}{k.url}</div>
+          </span>
+          <button className="knop klein" onClick={() => void schakel(k)}>
+            {k.actief ? "Verbergen" : "Tonen"}
+          </button>
+          <button className="knop klein kaal" onClick={() => void weg(k)} aria-label={`${k.naam} verwijderen`}>
+            {Icoon.sluiten({})}
+          </button>
+        </div>
+      ))}
+      {koppelingen.length === 0 && <p className="mini" style={{ margin: 0 }}>Nog geen snelkoppelingen.</p>}
+
+      <form className="rij koppelvorm" onSubmit={(e) => void voegToe(e)}>
+        <input value={naam} onChange={(e) => setNaam(e.target.value)} placeholder="Naam" required />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… of /declaraties" required />
+        <input value={omschrijving} onChange={(e) => setOmschrijving(e.target.value)} placeholder="Waar is het voor?" />
+        <input value={groep} onChange={(e) => setGroep(e.target.value)} placeholder="Groep" list="cockpitgroepen" />
+        <datalist id="cockpitgroepen">
+          {groepen.map((g) => <option value={g} key={g} />)}
+        </datalist>
+        <button className="knop hoofd" type="submit">Toevoegen</button>
+      </form>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- onderhoud ------- */
+
+const DAGEN = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag"];
+const MAANDEN = ["januari", "februari", "maart", "april", "mei", "juni",
+  "juli", "augustus", "september", "oktober", "november", "december"];
+
+/** Het ritme in gewoon Nederlands, zodat je niet hoeft te rekenen. */
+function ritmeTekst(t: TerugkerendRij): string {
+  switch (t.ritme) {
+    case "dagelijks": return t.alleen_werkdagen ? "elke werkdag" : "elke dag";
+    case "wekelijks": return `elke ${DAGEN[(t.dag_van_week ?? 1) - 1] ?? "maandag"}`;
+    case "maandelijks": return `elke maand rond de ${t.dag_van_maand ?? 1}e`;
+    case "kwartaal": return `elk kwartaal, rond de ${t.dag_van_maand ?? 1}e`;
+    case "jaarlijks": return `elk jaar rond ${t.dag_van_maand ?? 1} ${MAANDEN[(t.maand ?? 1) - 1] ?? "januari"}`;
+  }
+}
+
+/* Wat er vanzelf terugkomt. De database plant het elke nacht; hier zet je het
+   aan of uit en zie je wanneer het voor het laatst op je lijst kwam. */
+function Onderhoud({ ritmes, bijWijziging }: { ritmes: TerugkerendRij[]; bijWijziging: () => void }) {
+  const meld = useMelding();
+
+  async function schakel(t: TerugkerendRij) {
+    try {
+      await bewaarTerugkerend({ id: t.id, actief: !t.actief });
+      bijWijziging();
+    } catch (e) { meld(e instanceof Error ? e.message : String(e), "fout"); }
+  }
+
+  if (ritmes.length === 0) {
+    return <Leeg teken="↻">Nog geen terugkerend onderhoud ingesteld.</Leeg>;
+  }
+
+  return (
+    <div className="kaart">
+      {ritmes.map((t) => (
+        <div className="ritme-rij" key={t.id}>
+          <span className="groei">
+            <span className="titel">{t.titel}</span>
+            <p className="mini">
+              {ritmeTekst(t)}
+              {t.projects && ` · ${t.projects.naam}`}
+              {t.laatst_gepland && ` · laatst gepland ${relatief(t.laatst_gepland)}`}
+            </p>
+            {t.link && (
+              <p className="mini">
+                {t.link.startsWith("/")
+                  ? <Link to={t.link}>{t.link}</Link>
+                  : <a href={t.link} target="_blank" rel="noreferrer">{t.link}</a>}
+              </p>
+            )}
+          </span>
+          {!t.actief && <Merkje>uit</Merkje>}
+          <button className="knop klein" onClick={() => void schakel(t)}>
+            {t.actief ? "Stoppen" : "Aanzetten"}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
