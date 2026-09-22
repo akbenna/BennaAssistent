@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync } from "../components/ui";
 import { Sfeer, type SfeerSoort } from "../components/sfeer";
+import { Cockpit } from "../components/Cockpit";
 import { TaakKaart } from "../components/TaakKaart";
 import { TaakPaneel } from "../components/TaakPaneel";
 import { datumLang, deadlineToon, relatief, tijdKort, vandaag } from "../lib/format";
@@ -155,6 +156,8 @@ export function Vandaag() {
           </div>
         </section>
       )}
+
+      <Cockpit />
 
       {(documenten.data ?? []).length > 0 && (
         <section className="sectie">

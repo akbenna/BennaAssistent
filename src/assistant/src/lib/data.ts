@@ -4,7 +4,8 @@ import type { Ontleding } from "./bricks";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
   DeclaratieImport, DeclaratieMaand,
-  Opvolging, Prioriteit, Project, Sjabloon, TaakRij, TaakStatus,
+  Koppeling, Opvolging, Prioriteit, Project, Sjabloon, TaakRij, TaakStatus,
+  Terugkerend, TerugkerendRij,
 } from "../types/db";
 
 const TAAK_VELDEN = "id,project_id,titel,toelichting,status,prioriteit,deadline,aangemaakt_door,afgerond_op,gearchiveerd_op,created_at,updated_at";
@@ -406,4 +407,45 @@ export async function haalDeclaratieImports(): Promise<DeclaratieImport[]> {
       .select("id,rapport,bestandsnaam,praktijknummer,periode,stand_database,aantal_regels,created_at")
       .order("created_at", { ascending: false }).limit(20).returns<DeclaratieImport[]>(),
   );
+}
+
+/* ------------------------------------------------------- cockpit --------- */
+
+const KOPPELING_VELDEN = "id,naam,url,omschrijving,groep,volgorde,actief";
+
+export async function haalKoppelingen(metInactief = false): Promise<Koppeling[]> {
+  let q = supabase.from("koppelingen").select(KOPPELING_VELDEN);
+  if (!metInactief) q = q.eq("actief", true);
+  return controleer(
+    await q.order("groep", { ascending: true, nullsFirst: false })
+      .order("volgorde").order("naam").returns<Koppeling[]>(),
+  );
+}
+
+export async function bewaarKoppeling(k: Omit<Koppeling, "id"> & { id?: string }): Promise<void> {
+  const { error } = k.id
+    ? await supabase.from("koppelingen").update(k).eq("id", k.id)
+    : await supabase.from("koppelingen").insert(k);
+  if (error) throw new Error(error.message);
+}
+
+export async function verwijderKoppeling(id: string): Promise<void> {
+  const { error } = await supabase.from("koppelingen").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+const RITME_VELDEN =
+  "id,project_id,titel,toelichting,link,ritme,dag_van_week,dag_van_maand,maand,alleen_werkdagen,prioriteit,actief,laatst_gepland";
+
+export async function haalTerugkerend(): Promise<TerugkerendRij[]> {
+  return controleer(
+    await supabase.from("terugkerend").select(`${RITME_VELDEN},projects(naam,kleur)`)
+      .order("ritme").order("titel").returns<TerugkerendRij[]>(),
+  );
+}
+
+export async function bewaarTerugkerend(t: Partial<Terugkerend> & { id: string }): Promise<void> {
+  const { id, ...rest } = t;
+  const { error } = await supabase.from("terugkerend").update(rest).eq("id", id);
+  if (error) throw new Error(error.message);
 }
