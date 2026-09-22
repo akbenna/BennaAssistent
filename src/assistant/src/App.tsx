@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Icoon } from "./components/ui";
+import { HulpKnop } from "./components/Hulp";
 import { useSessie } from "./lib/auth";
 import { haalTellingen, type Tellingen } from "./lib/data";
 import { huidigThema, THEMA_LABEL, volgendThema, zetThema, type Thema } from "./lib/thema";
@@ -33,7 +34,7 @@ export default function App() {
           <img src="/icons/icon-192.png" alt="" width={24} height={24} />
           BennaAssistent
         </span>
-        <span className="rechts"><ThemaKnop /></span>
+        <span className="rechts"><HulpKnop /><ThemaKnop /></span>
       </header>
       <main className="inhoud">
         <Suspense fallback={<p className="mini">Even laden…</p>}>

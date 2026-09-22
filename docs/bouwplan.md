@@ -176,6 +176,13 @@ de hand in elke opdracht stond. Nu staat hij één keer in de Vault en haalt
 **README en beheerdocument.** De audit noemde het ontbreken ervan een
 organisatorisch gat; ze kostten weinig en staan er nu.
 
+**Een handleiding in de app zelf.** Op verzoek van de eigenaar: achter het
+vraagteken in de kop staat per pagina wat dat onderdeel doet en waarom het zo
+werkt, met onderaan de andere hoofdstukken zodat het ook als geheel te lezen
+is. De tekst staat in `src/lib/handleiding.ts`; een toets bewaakt dat elke
+route een hoofdstuk heeft en andersom, zodat een nieuwe pagina niet stilletjes
+zonder uitleg kan blijven.
+
 ## Wat met opzet is blijven liggen
 
 3.5 (Bricks-export via mail) en 3.6 (portaalstatus in de cockpit) vergen eerst

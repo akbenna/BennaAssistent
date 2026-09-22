@@ -622,3 +622,36 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
    scherm naast elkaar passen en op een telefoon vanzelf onder elkaar vallen. */
 .koppelvorm { flex-wrap: wrap; margin-top: 0.8rem; }
 .koppelvorm input { flex: 1 1 150px; width: auto; min-width: 0; }
+
+/* ------------------------------------------------------- handleiding ----- */
+
+/* De uitleg leest als een stuk tekst en niet als een scherm: ruimere regelval,
+   smallere regels dan de rest van de app. Wie hier komt wil lezen. */
+.hulp { max-width: 46ch; }
+.hulp h2 { font-size: 1.15rem; margin: 0 0 0.2rem; }
+.hulp .kern { font-size: 0.95rem; color: var(--dim); margin: 0 0 0.2rem; }
+.hulp section { margin-top: 1.5rem; }
+.hulp h3 {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--k); margin: 0 0 0.35rem;
+}
+.hulp p { font-size: 0.92rem; line-height: 1.68; margin: 0 0 0.7rem; }
+.hulp section p:last-child { margin-bottom: 0; }
+
+.hulpwijzer { margin-top: 2.2rem; border-top: 1px solid var(--lijn); padding-top: 1rem; }
+.hulpwijzer .opschrift { margin: 0 0 0.5rem; }
+.hulpwijzer button {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; border-radius: var(--radius-klein);
+  padding: 0.5rem 0.6rem; color: inherit;
+}
+.hulpwijzer button:hover { background: var(--vlak2); }
+.hulpwijzer button.actief { background: var(--kbg); }
+.hulpwijzer button.actief b { color: var(--k); }
+.hulpwijzer button b { display: block; font-size: 0.88rem; font-weight: 640; }
+.hulpwijzer button span { display: block; font-size: 0.76rem; color: var(--dim); line-height: 1.45; }
+/* Een knop die als link leest: in lopende tekst is een knopvorm te luid. */
+.alslink {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--k); text-decoration: underline; font: inherit;
+}
