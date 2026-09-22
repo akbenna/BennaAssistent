@@ -61,10 +61,24 @@ async function verwerkBron(admin: Admin, src: any) {
   const labelLijst = await g(token, `${GMAIL}/labels`);
   const labelNaam = new Map<string, string>((labelLijst.labels ?? []).map((l: any) => [l.id, l.name]));
 
-  let verwerkt = 0, uitgesloten = 0, voorstellen = 0;
+  let verwerkt = 0, uitgesloten = 0, voorstellen = 0, verdwenen = 0;
   for (const id of uniek) {
     if (bestaand.has(id)) continue;
-    const m = parseMessage(await g(token, `${GMAIL}/messages/${id}?format=full`));
+
+    /* De geschiedenis noemt ook berichten die inmiddels weg zijn: verwijderd,
+       of definitief uit de prullenbak gegooid. Google antwoordt dan met 404.
+       Dat is geen storing maar een mail die er niet meer is. Zonder deze
+       uitzondering brak de hele ronde af op dat ene bericht, werd de cursor
+       niet opgeschoven, en herhaalde dezelfde fout zich elke tien minuten —
+       waarbij alle mail ná dat bericht ongezien bleef. */
+    let ruw: unknown;
+    try {
+      ruw = await g(token, `${GMAIL}/messages/${id}?format=full`);
+    } catch (e) {
+      if (e instanceof GoogleError && e.status === 404) { verdwenen++; continue; }
+      throw e;
+    }
+    const m = parseMessage(ruw);
     if (m.labels.some((l) => OVERSLAAN.includes(l))) continue;
     if (m.labels.includes("SENT") && !m.labels.includes("INBOX")) continue; // eigen verzonden mail
 
@@ -104,7 +118,7 @@ async function verwerkBron(admin: Admin, src: any) {
   }
   await admin.from("sources").update({ sync_cursor: cursor, laatst_gesynct: new Date().toISOString(), laatste_fout: null })
     .eq("id", src.id);
-  return { bron: src.account, verwerkt, uitgesloten, voorstellen };
+  return { bron: src.account, verwerkt, uitgesloten, voorstellen, verdwenen };
 }
 
 Deno.serve(async (req) => {
