@@ -587,3 +587,71 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
 .knop svg, .merkje svg, .rij > svg, .brief-regel svg, .chip svg { width: 16px; height: 16px; flex: none; }
 .knop.kaal svg { width: 20px; height: 20px; }
 .paneel > header .knop.kaal { margin-left: -0.35rem; }
+
+/* ---------------------------------------------------------- cockpit ------ */
+
+/* De doorsteek naar de andere apps. Tegels in plaats van een lijst: je zoekt
+   hier op naam en niet op volgorde, en een tegel is met een duim te raken. */
+.cockpit { display: grid; gap: 1rem; }
+.cockpitgroep .opschrift { margin: 0 0 0.4rem; }
+.tegels {
+  display: grid; gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+}
+.tegel {
+  position: relative; display: flex; flex-direction: column; gap: 3px;
+  background: var(--vlak); border: 1px solid var(--lijn);
+  border-radius: var(--radius-klein); padding: 11px 13px;
+  text-decoration: none; color: inherit; box-shadow: var(--schaduw);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.tegel:hover { border-color: var(--k); transform: translateY(-1px); }
+.tegel b { font-size: 0.88rem; font-weight: 650; padding-right: 1.1rem; }
+.tegel span { font-size: 0.74rem; color: var(--dim); line-height: 1.45; }
+.tegel .hoekje { position: absolute; top: 10px; right: 10px; color: var(--dim); display: flex; }
+.tegel .hoekje svg { width: 13px; height: 13px; }
+
+/* Het onderhoudsritme in de instellingen. */
+.ritme-rij { display: flex; align-items: flex-start; gap: 0.7rem; padding: 0.7rem 0; border-top: 1px solid var(--lijn); }
+.ritme-rij:first-of-type { border-top: none; }
+.ritme-rij .groei { min-width: 0; }
+.ritme-rij .titel { font-size: 0.9rem; font-weight: 600; }
+.ritme-rij .mini { margin: 2px 0 0; }
+
+/* Het toevoegformulier van de doorsteek: vier korte velden die op een breed
+   scherm naast elkaar passen en op een telefoon vanzelf onder elkaar vallen. */
+.koppelvorm { flex-wrap: wrap; margin-top: 0.8rem; }
+.koppelvorm input { flex: 1 1 150px; width: auto; min-width: 0; }
+
+/* ------------------------------------------------------- handleiding ----- */
+
+/* De uitleg leest als een stuk tekst en niet als een scherm: ruimere regelval,
+   smallere regels dan de rest van de app. Wie hier komt wil lezen. */
+.hulp { max-width: 46ch; }
+.hulp h2 { font-size: 1.15rem; margin: 0 0 0.2rem; }
+.hulp .kern { font-size: 0.95rem; color: var(--dim); margin: 0 0 0.2rem; }
+.hulp section { margin-top: 1.5rem; }
+.hulp h3 {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--k); margin: 0 0 0.35rem;
+}
+.hulp p { font-size: 0.92rem; line-height: 1.68; margin: 0 0 0.7rem; }
+.hulp section p:last-child { margin-bottom: 0; }
+
+.hulpwijzer { margin-top: 2.2rem; border-top: 1px solid var(--lijn); padding-top: 1rem; }
+.hulpwijzer .opschrift { margin: 0 0 0.5rem; }
+.hulpwijzer button {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; border-radius: var(--radius-klein);
+  padding: 0.5rem 0.6rem; color: inherit;
+}
+.hulpwijzer button:hover { background: var(--vlak2); }
+.hulpwijzer button.actief { background: var(--kbg); }
+.hulpwijzer button.actief b { color: var(--k); }
+.hulpwijzer button b { display: block; font-size: 0.88rem; font-weight: 640; }
+.hulpwijzer button span { display: block; font-size: 0.76rem; color: var(--dim); line-height: 1.45; }
+/* Een knop die als link leest: in lopende tekst is een knopvorm te luid. */
+.alslink {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--k); text-decoration: underline; font: inherit;
+}

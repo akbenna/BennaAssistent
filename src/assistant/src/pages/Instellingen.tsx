@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync, useMelding } from "../components/ui";
 import { datumLang, relatief } from "../lib/format";
 import { roepFunctie, supabase } from "../lib/supabase";
 import { useSessie } from "../lib/auth";
 import {
-  bewaarFilter, bewaarSjabloon, haalBronnen, haalFilters, haalLogboek, haalSjablonen,
-  verwijderFilter, verwijderSjabloon,
+  bewaarFilter, bewaarKoppeling, bewaarSjabloon, bewaarTerugkerend, haalBronnen, haalFilters,
+  haalGezondheid, haalKoppelingen, haalLogboek, haalSjablonen, haalTerugkerend, haalVerbruik,
+  verwijderFilter, verwijderKoppeling, verwijderSjabloon,
 } from "../lib/data";
-import type { FilterSoort, Sjabloon } from "../types/db";
+import type { FilterSoort, Koppeling, Sjabloon, TerugkerendRij } from "../types/db";
 
 const GOOGLE_MELDING: Record<string, string> = {
   gekoppeld: "Google is gekoppeld. De eerste mail wordt binnen tien minuten opgehaald.",
@@ -17,6 +18,7 @@ const GOOGLE_MELDING: Record<string, string> = {
   "geen-refresh-token": "Google gaf geen vernieuwingstoken. Ontkoppel de app in je Google-account en koppel opnieuw.",
   opslagfout: "De koppeling kon niet worden opgeslagen.",
   vaultfout: "Het token kon niet veilig worden opgeborgen.",
+  tokenfout: "Google weigerde de koppelcode. Meestal is de poging te lang blijven liggen; probeer het opnieuw.",
 };
 
 const FILTER_UITLEG: Record<FilterSoort, string> = {
@@ -36,6 +38,8 @@ export function Instellingen() {
   const bronnen = useAsync(() => haalBronnen(), [ronde]);
   const filters = useAsync(() => haalFilters(), [ronde]);
   const sjablonen = useAsync(() => haalSjablonen(), [ronde]);
+  const koppelingen = useAsync(() => haalKoppelingen(true), [ronde]);
+  const ritmes = useAsync(() => haalTerugkerend(), [ronde]);
   const logboek = useAsync(() => haalLogboek(40), [ronde]);
 
   useEffect(() => {
@@ -65,6 +69,8 @@ export function Instellingen() {
         <p className="opschrift">Onder de motorkap</p>
         <h1>Instellingen</h1>
       </div>
+
+      <Nachtploeg />
 
       <section className="sectie">
         <header><h2>Google</h2></header>
@@ -155,8 +161,40 @@ export function Instellingen() {
         <SjabloonLijst sjablonen={sjablonen.data ?? []} bijWijziging={() => setRonde((r) => r + 1)} />
       </section>
 
+      <section className="sectie" id="koppelingen">
+        <header>
+          <h2>Doorsteek</h2>
+          <span className="aantal">{(koppelingen.data ?? []).length}</span>
+        </header>
+        <p className="klein zacht">
+          De tegels op Vandaag. Eén blik, één klik naar de juiste pagina van het portaal
+          of naar een van je andere apps.
+        </p>
+        {koppelingen.laden && <Skelet aantal={2} />}
+        {!koppelingen.laden && (
+          <Doorsteek koppelingen={koppelingen.data ?? []} bijWijziging={() => setRonde((r) => r + 1)} />
+        )}
+      </section>
+
+      <section className="sectie" id="onderhoud">
+        <header>
+          <h2>Onderhoudsritme</h2>
+          <span className="aantal">{(ritmes.data ?? []).length}</span>
+        </header>
+        <p className="klein zacht">
+          Wat vanzelf terugkomt. Elke nacht kijkt de database of er iets aan de beurt is en
+          zet het als taak op je lijst. Valt een datum in het weekend, dan schuift hij naar
+          de eerstvolgende werkdag in plaats van over te slaan.
+        </p>
+        {ritmes.laden && <Skelet aantal={3} />}
+        {!ritmes.laden && (
+          <Onderhoud ritmes={ritmes.data ?? []} bijWijziging={() => setRonde((r) => r + 1)} />
+        )}
+      </section>
+
       <section className="sectie">
         <header><h2>Logboek</h2></header>
+        <Verbruikje />
         <div className="kaart">
           {logboek.laden && <Skelet aantal={2} />}
           {(logboek.data ?? []).map((r) => (
@@ -184,6 +222,7 @@ export function Instellingen() {
           <button className="knop" onClick={() => void afmelden()}>Afmelden</button>
         </div>
         <Wachtwoord />
+        <TweeStappen />
       </section>
     </>
   );
@@ -383,6 +422,366 @@ function Wachtwoord() {
           Annuleren
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- doorsteek ------- */
+
+/* De snelkoppelingen die op Vandaag als tegels staan. */
+function Doorsteek({ koppelingen, bijWijziging }: { koppelingen: Koppeling[]; bijWijziging: () => void }) {
+  const meld = useMelding();
+  const [naam, setNaam] = useState("");
+  const [url, setUrl] = useState("");
+  const [omschrijving, setOmschrijving] = useState("");
+  const [groep, setGroep] = useState("");
+
+  const groepen = Array.from(new Set(koppelingen.map((k) => k.groep).filter((g): g is string => !!g)));
+
+  async function schakel(k: Koppeling) {
+    try {
+      await bewaarKoppeling({ ...k, actief: !k.actief });
+      bijWijziging();
+    } catch (e) { meld(e instanceof Error ? e.message : String(e), "fout"); }
+  }
+
+  async function weg(k: Koppeling) {
+    if (!window.confirm(`"${k.naam}" verwijderen?`)) return;
+    try {
+      await verwijderKoppeling(k.id);
+      bijWijziging();
+    } catch (e) { meld(e instanceof Error ? e.message : String(e), "fout"); }
+  }
+
+  async function voegToe(e: React.FormEvent) {
+    e.preventDefault();
+    if (!naam.trim() || !url.trim()) return;
+    try {
+      await bewaarKoppeling({
+        naam: naam.trim(), url: url.trim(),
+        omschrijving: omschrijving.trim() || null,
+        groep: groep.trim() || null,
+        volgorde: 400, actief: true,
+      });
+      setNaam(""); setUrl(""); setOmschrijving("");
+      bijWijziging();
+      meld("Toegevoegd.");
+    } catch (e2) { meld(e2 instanceof Error ? e2.message : String(e2), "fout"); }
+  }
+
+  return (
+    <div className="kaart">
+      {koppelingen.map((k) => (
+        <div className="brief-regel" key={k.id}>
+          <span className="groei klein">
+            {k.naam}
+            <div className="mini">{k.groep ? `${k.groep} · ` : ""}{k.url}</div>
+          </span>
+          <button className="knop klein" onClick={() => void schakel(k)}>
+            {k.actief ? "Verbergen" : "Tonen"}
+          </button>
+          <button className="knop klein kaal" onClick={() => void weg(k)} aria-label={`${k.naam} verwijderen`}>
+            {Icoon.sluiten({})}
+          </button>
+        </div>
+      ))}
+      {koppelingen.length === 0 && <p className="mini" style={{ margin: 0 }}>Nog geen snelkoppelingen.</p>}
+
+      <form className="rij koppelvorm" onSubmit={(e) => void voegToe(e)}>
+        <input value={naam} onChange={(e) => setNaam(e.target.value)} placeholder="Naam" required />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… of /declaraties" required />
+        <input value={omschrijving} onChange={(e) => setOmschrijving(e.target.value)} placeholder="Waar is het voor?" />
+        <input value={groep} onChange={(e) => setGroep(e.target.value)} placeholder="Groep" list="cockpitgroepen" />
+        <datalist id="cockpitgroepen">
+          {groepen.map((g) => <option value={g} key={g} />)}
+        </datalist>
+        <button className="knop hoofd" type="submit">Toevoegen</button>
+      </form>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- onderhoud ------- */
+
+const DAGEN = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag"];
+const MAANDEN = ["januari", "februari", "maart", "april", "mei", "juni",
+  "juli", "augustus", "september", "oktober", "november", "december"];
+
+/** Het ritme in gewoon Nederlands, zodat je niet hoeft te rekenen. */
+function ritmeTekst(t: TerugkerendRij): string {
+  switch (t.ritme) {
+    case "dagelijks": return t.alleen_werkdagen ? "elke werkdag" : "elke dag";
+    case "wekelijks": return `elke ${DAGEN[(t.dag_van_week ?? 1) - 1] ?? "maandag"}`;
+    case "maandelijks": return `elke maand rond de ${t.dag_van_maand ?? 1}e`;
+    case "kwartaal": return `elk kwartaal, rond de ${t.dag_van_maand ?? 1}e`;
+    case "jaarlijks": return `elk jaar rond ${t.dag_van_maand ?? 1} ${MAANDEN[(t.maand ?? 1) - 1] ?? "januari"}`;
+  }
+}
+
+/* Wat er vanzelf terugkomt. De database plant het elke nacht; hier zet je het
+   aan of uit en zie je wanneer het voor het laatst op je lijst kwam. */
+function Onderhoud({ ritmes, bijWijziging }: { ritmes: TerugkerendRij[]; bijWijziging: () => void }) {
+  const meld = useMelding();
+
+  async function schakel(t: TerugkerendRij) {
+    try {
+      await bewaarTerugkerend({ id: t.id, actief: !t.actief });
+      bijWijziging();
+    } catch (e) { meld(e instanceof Error ? e.message : String(e), "fout"); }
+  }
+
+  if (ritmes.length === 0) {
+    return <Leeg teken="↻">Nog geen terugkerend onderhoud ingesteld.</Leeg>;
+  }
+
+  return (
+    <div className="kaart">
+      {ritmes.map((t) => (
+        <div className="ritme-rij" key={t.id}>
+          <span className="groei">
+            <span className="titel">{t.titel}</span>
+            <p className="mini">
+              {ritmeTekst(t)}
+              {t.projects && ` · ${t.projects.naam}`}
+              {t.laatst_gepland && ` · laatst gepland ${relatief(t.laatst_gepland)}`}
+            </p>
+            {t.link && (
+              <p className="mini">
+                {t.link.startsWith("/")
+                  ? <Link to={t.link}>{t.link}</Link>
+                  : <a href={t.link} target="_blank" rel="noreferrer">{t.link}</a>}
+              </p>
+            )}
+          </span>
+          {!t.actief && <Merkje>uit</Merkje>}
+          <button className="knop klein" onClick={() => void schakel(t)}>
+            {t.actief ? "Stoppen" : "Aanzetten"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/*
+ * TWEESTAPSVERIFICATIE
+ *
+ * Met een wachtwoord alleen kan wie het raadt of ergens vandaan haalt namens
+ * jou mail versturen vanuit jouw Gmail — dat is precies wat deze app kan. Een
+ * zescijferige code uit je telefoon sluit dat af.
+ *
+ * Er zijn met opzet geen herstelcodes. Die moet je ergens bewaren, en dat wordt
+ * in de praktijk een briefje of een notitie-app; de inloglink per mail is het
+ * vangnet en die heb je al. Raak je je telefoon kwijt, dan haal je de factor
+ * weg via de inloglink.
+ */
+function TweeStappen() {
+  const meld = useMelding();
+  const stand = useAsync(async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) throw new Error(error.message);
+    return (data.totp ?? []).filter((f) => f.status === "verified");
+  }, []);
+  const [bezig, setBezig] = useState(false);
+  const [nieuw, setNieuw] = useState<{ id: string; qr: string; geheim: string } | null>(null);
+  const [code, setCode] = useState("");
+
+  async function begin() {
+    setBezig(true);
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: `BennaAssistent ${new Date().toLocaleDateString("nl-NL")}`,
+      });
+      if (error) throw new Error(error.message);
+      setNieuw({ id: data.id, qr: data.totp.qr_code, geheim: data.totp.secret });
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    } finally {
+      setBezig(false);
+    }
+  }
+
+  async function bevestig() {
+    if (!nieuw) return;
+    setBezig(true);
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: nieuw.id,
+        code: code.replace(/\s/g, ""),
+      });
+      if (error) throw new Error(error.message);
+      setNieuw(null);
+      setCode("");
+      stand.herlaad();
+      meld("Tweestapsverificatie staat aan.");
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    } finally {
+      setBezig(false);
+    }
+  }
+
+  async function weg(id: string) {
+    if (!window.confirm("Tweestapsverificatie uitzetten? Je account is daarna alleen door je wachtwoord beschermd.")) return;
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: id });
+      if (error) throw new Error(error.message);
+      stand.herlaad();
+      meld("Tweestapsverificatie staat uit.");
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    }
+  }
+
+  const aan = (stand.data ?? []).length > 0;
+
+  if (nieuw) {
+    return (
+      <div className="kaart let" style={{ marginTop: "0.6rem" }}>
+        <p className="klein" style={{ marginTop: 0 }}>
+          Scan deze code met je authenticator-app (1Password, Google Authenticator, Bitwarden)
+          en tik daarna de zes cijfers in die hij toont.
+        </p>
+        <img src={nieuw.qr} alt="QR-code voor je authenticator-app" width={180} height={180}
+          style={{ background: "#fff", borderRadius: 8, padding: 6 }} />
+        <p className="mini">Werkt scannen niet, tik dan deze sleutel over: <code>{nieuw.geheim}</code></p>
+        <label className="veld">
+          <span>De zes cijfers</span>
+          <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={7}
+            value={code} onChange={(e) => setCode(e.target.value)} />
+        </label>
+        <div className="knoppen">
+          <button className="knop primair klein" disabled={bezig || code.replace(/\s/g, "").length < 6}
+            onClick={() => void bevestig()}>
+            {bezig ? "Bezig…" : "Aanzetten"}
+          </button>
+          <button className="knop klein" onClick={() => { setNieuw(null); setCode(""); }}>Annuleren</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "0.6rem" }}>
+      {aan ? (
+        <div className="rij">
+          <Merkje kleur="groen">{Icoon.vink({})} tweestapsverificatie aan</Merkje>
+          <button className="knop klein kaal" onClick={() => void weg(stand.data![0]!.id)}>Uitzetten</button>
+        </div>
+      ) : (
+        <>
+          <p className="mini" style={{ margin: "0 0 0.4rem" }}>
+            Deze app kan namens jou mail versturen. Een code uit je telefoon erbij maakt een
+            gestolen wachtwoord waardeloos.
+          </p>
+          <button className="knop klein" disabled={bezig} onClick={() => void begin()}>
+            Tweestapsverificatie aanzetten
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/*
+ * HOE HET DE NACHTPLOEG VERGAAT
+ *
+ * De 404 op de mailkoppeling stond twintig rondes in de database voordat hij
+ * op een telefoon werd opgemerkt. Dit blokje is het antwoord daarop: het staat
+ * bovenaan Instellingen en het zegt in één regel of alles nog draait.
+ *
+ * pg_cron schrijft bij een geslaagde ronde "1 row" in hetzelfde veld waar bij
+ * een mislukte ronde de fout staat. Dat is hier geen fout en wordt dus alleen
+ * getoond als de laatste ronde ook echt misging.
+ */
+const KLOK: Record<string, string> = {
+  "*/10 * * * *": "elke tien minuten",
+  "5 * * * *": "elk uur",
+  "20 * * * *": "elk uur",
+  "30 4,5 * * 1-5": "elke werkdag om 06.30 uur",
+  "0 5 * * 1": "maandagochtend",
+  "5 4 * * *": "elke nacht",
+  "15 3 * * *": "elke nacht",
+  "30 3 * * *": "elke nacht",
+};
+
+const WERK: Record<string, string> = {
+  "bennaassistent-gmail": "Mail ophalen",
+  "bennaassistent-followup": "Antwoorden nakijken",
+  "bennaassistent-drive": "Drive nakijken",
+  "bennaassistent-brief": "Dagoverzicht maken",
+  "bennaassistent-week": "Weekoverzicht maken",
+  "bennaassistent-terugkerend": "Onderhoud inplannen",
+  "bennaassistent-opruimen": "Oude gegevens wissen",
+  "bennaassistent-hertriage": "Mislukte triage inhalen",
+};
+
+function Nachtploeg() {
+  const stand = useAsync(() => haalGezondheid(), []);
+  const rijen = stand.data ?? [];
+
+  const stuk = rijen.filter((r) => r.mislukt_24u >= 2);
+  const hapert = rijen.filter((r) => r.mislukt_24u === 1);
+  const kleur = stuk.length ? "foutrand" : hapert.length ? "let" : "goedrand";
+
+  const kop = stuk.length
+    ? `${stuk.length === 1 ? "Eén nachtelijke taak faalt" : `${stuk.length} nachtelijke taken falen`} herhaaldelijk`
+    : hapert.length
+      ? "Eén ronde ging mis, de rest loopt"
+      : "Alles draait";
+
+  return (
+    <section className="sectie">
+      <header><h2>Nachtploeg</h2></header>
+      {stand.laden && <Skelet aantal={1} />}
+      {stand.fout && <Fout tekst={stand.fout} opnieuw={stand.herlaad} />}
+      {!stand.laden && !stand.fout && (
+        <div className={`kaart ${kleur}`}>
+          <p className="klein" style={{ marginTop: 0, fontWeight: 600 }}>{kop}</p>
+          {rijen.map((r) => (
+            <div className="brief-regel" key={r.taak}>
+              <span className="groei klein">
+                {WERK[r.taak] ?? r.taak}
+                <div className="mini">
+                  {KLOK[r.rooster] ?? r.rooster}
+                  {r.laatste ? ` · laatst ${relatief(r.laatste)}` : " · nog niet gedraaid"}
+                </div>
+                {/* Alleen tonen als de laatste ronde ook echt misging. */}
+                {r.status && r.status !== "succeeded" && r.fout && (
+                  <div className="mini" style={{ color: "var(--fout)" }}>{r.fout}</div>
+                )}
+              </span>
+              {r.mislukt_24u > 0 && (
+                <Merkje kleur={r.mislukt_24u >= 2 ? "rood" : "amber"}>
+                  {r.mislukt_24u}× mis vandaag
+                </Merkje>
+              )}
+            </div>
+          ))}
+          {rijen.length === 0 && <p className="mini" style={{ margin: 0 }}>Geen taken ingepland.</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* Wat de modellen deze maand kosten, in tokens. Geen euro's: de prijs per
+   token verandert en een verouderd bedrag is misleidender dan geen bedrag. */
+function Verbruikje() {
+  const stand = useAsync(() => haalVerbruik(), []);
+  const rijen = stand.data ?? [];
+  if (!rijen.length) return null;
+  const getal = (n: number) => new Intl.NumberFormat("nl-NL").format(n);
+  return (
+    <div className="kaart plat" style={{ marginBottom: "0.6rem" }}>
+      <p className="mini" style={{ margin: "0 0 0.4rem" }}>Deze maand aan het taalmodel gevraagd:</p>
+      {rijen.map((v) => (
+        <div className="brief-regel" key={v.model}>
+          <span className="groei mini">{v.model}</span>
+          <span className="mini">{v.aanroepen}× · {getal(v.invoer)} in / {getal(v.uitvoer)} uit</span>
+        </div>
+      ))}
     </div>
   );
 }

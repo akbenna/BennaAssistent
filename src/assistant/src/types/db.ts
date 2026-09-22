@@ -129,6 +129,16 @@ export interface Dagoverzicht {
   opvolging_verlopen?: Array<{ task_id: string; titel: string | null; sinds: string }>;
 }
 
+/** Wat er deze week aankomt. Wordt op maandag gemaakt en blijft de week staan. */
+export interface Weekoverzicht {
+  maandag: string;
+  zondag: string;
+  deadlines?: Array<Pick<Taak, "id" | "titel" | "deadline" | "prioriteit" | "status">>;
+  onderhoud?: Array<{ titel: string; link: string | null; wanneer: string | null }>;
+  wachten?: Array<{ task_id: string; titel: string | null; sinds: string }>;
+  stille_projecten?: Array<{ naam: string }>;
+}
+
 /** Taak met de namen erbij die de lijstweergave toont. */
 export interface TaakRij extends Taak {
   projects: { naam: string; kleur: string | null } | null;
@@ -165,4 +175,71 @@ export interface DeclaratieMaand {
   poh_ggz: number | null;
   chirurgie: number | null;
   intensieve_zorg: number | null;
+}
+
+/* ------------------------------------------------------- cockpit --------- */
+
+/** Een snelkoppeling naar een andere app of beheerpagina. Een url die met een
+    schuine streep begint is een pagina binnen deze app. */
+export interface Koppeling {
+  id: string;
+  naam: string;
+  url: string;
+  omschrijving: string | null;
+  groep: string | null;
+  volgorde: number;
+  actief: boolean;
+}
+
+export type Ritme = "dagelijks" | "wekelijks" | "maandelijks" | "kwartaal" | "jaarlijks";
+
+/** Onderhoud dat vanzelf terugkomt. De database plant er elke nacht taken uit;
+    zie `plan_terugkerend()`. */
+export interface Terugkerend {
+  id: string;
+  project_id: string | null;
+  titel: string;
+  toelichting: string | null;
+  link: string | null;
+  ritme: Ritme;
+  dag_van_week: number | null;
+  dag_van_maand: number | null;
+  maand: number | null;
+  alleen_werkdagen: boolean;
+  prioriteit: Prioriteit;
+  actief: boolean;
+  laatst_gepland: string | null;
+}
+
+export interface TerugkerendRij extends Terugkerend {
+  projects: { naam: string; kleur: string | null } | null;
+}
+
+/* ---------------------------------------------------- toezicht ----------- */
+
+/** Eén nachtelijke taak en hoe het hem vergaat. */
+export interface Gezondheid {
+  taak: string;
+  rooster: string;
+  laatste: string | null;
+  status: string | null;
+  fout: string | null;
+  mislukt_24u: number;
+}
+
+/** Wat het maandoverzicht op Instellingen per model laat zien. */
+export interface Verbruik {
+  model: string;
+  aanroepen: number;
+  invoer: number;
+  uitvoer: number;
+}
+
+/** Eén partij die nog moet antwoorden, met de oudste openstaande mail erbij. */
+export interface Schuldig {
+  adres: string;
+  naam: string;
+  aantal: number;
+  oudste: string;
+  taken: Array<{ id: string; titel: string | null }>;
 }

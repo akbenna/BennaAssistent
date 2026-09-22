@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "../lib/supabase";
+import { useSessie } from "../lib/auth";
 
 /*
  * DRIE MANIEREN OM BINNEN TE KOMEN, IN DE VOLGORDE WAARIN ZE WERKEN
@@ -213,5 +214,70 @@ function GoogleMerk() {
       <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
       <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
     </svg>
+  );
+}
+
+/*
+ * DE TWEEDE STAP
+ *
+ * Verschijnt tussen inloggen en de app in, zodra er een geverifieerde
+ * authenticator aan het account hangt. Hij staat hier en niet in `Login`,
+ * omdat er op dit punt al een sessie is: je bent wie je zegt te zijn, maar nog
+ * niet op het niveau dat mail versturen vraagt.
+ */
+export function TweedeStap() {
+  const { hertoets, afmelden } = useSessie();
+  const [code, setCode] = useState("");
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState<string | null>(null);
+
+  async function toets(e: FormEvent) {
+    e.preventDefault();
+    setBezig(true);
+    setFout(null);
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw new Error(error.message);
+      const factor = (data.totp ?? []).find((f) => f.status === "verified");
+      if (!factor) throw new Error("Geen authenticator gevonden bij dit account.");
+      const { error: e2 } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: factor.id,
+        code: code.replace(/\s/g, ""),
+      });
+      if (e2) throw new Error(e2.message);
+      hertoets();
+    } catch (e3) {
+      setFout(e3 instanceof Error
+        ? (/invalid|incorrect/i.test(e3.message) ? "Die code klopt niet. Let op: hij verloopt elke dertig seconden." : e3.message)
+        : String(e3));
+      setBezig(false);
+    }
+  }
+
+  return (
+    <main style={{ minHeight: "100%", display: "grid", placeItems: "center", padding: "1.5rem" }}>
+      <div style={{ width: "min(400px, 100%)" }}>
+        <div className="kaart">
+          <h2 style={{ fontSize: "1.05rem", marginTop: 0 }}>Nog één stap</h2>
+          <p className="klein">Tik de zes cijfers in die je authenticator-app nu toont.</p>
+          <form onSubmit={(e) => void toets(e)}>
+            <label className="veld">
+              <span>Code</span>
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" autoFocus
+                maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} />
+            </label>
+            <button className="knop primair" style={{ width: "100%" }} type="submit"
+              disabled={bezig || code.replace(/\s/g, "").length < 6}>
+              {bezig ? "Bezig…" : "Doorgaan"}
+            </button>
+          </form>
+          {fout && <p className="klein" style={{ color: "var(--fout)", marginBottom: 0 }}>{fout}</p>}
+          <button type="button" className="knop kaal klein" style={{ width: "100%", marginTop: "0.8rem" }}
+            onClick={() => void afmelden()}>
+            Afmelden
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }

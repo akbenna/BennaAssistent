@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       .join("\n\n---\n\n");
   }
 
-  const tekst = await denkMee({
+  const { tekst, verbruik } = await denkMee({
     wijze,
     taak: { titel: taak.titel, toelichting: taak.toelichting, deadline: taak.deadline },
     thread: draad,
@@ -131,6 +131,8 @@ Deno.serve(async (req) => {
   }
 
   const model = wijze === "stappen" || wijze === "hoeken" ? TRIAGE_MODEL() : WRITE_MODEL();
-  await audit(admin, uid, "meegedacht", { object_type: "task", object_id: task_id, model, details: { wijze, toon } });
+  await audit(admin, uid, "meegedacht", {
+    object_type: "task", object_id: task_id, model, details: { wijze, toon, ...verbruik },
+  });
   return json({ tekst, wijze });
 });

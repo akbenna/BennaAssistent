@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     .map((m) => `Van: ${m.from}\nDatum: ${m.date.toISOString()}\nOnderwerp: ${m.subject}\n\n${m.text}`).join("\n\n---\n\n");
   const { data: sjablonen } = await admin.from("templates").select("naam,inhoud").eq("owner_id", uid).eq("actief", true);
 
-  const body = await schrijfConcept({ thread: tekst, instructie, sjablonen: sjablonen ?? [] });
+  const { tekst: body, verbruik } = await schrijfConcept({ thread: tekst, instructie, sjablonen: sjablonen ?? [] });
   const onderwerp = /^re:/i.test(laatsteAnder.subject) ? laatsteAnder.subject : `Re: ${laatsteAnder.subject}`;
   const raw = buildRaw({ to: laatsteAnder.from, subject: onderwerp, body, inReplyTo: laatsteAnder.messageIdHeader });
   const d = await g(token, `${GMAIL}/drafts`, { method: "POST",
@@ -51,6 +51,8 @@ Deno.serve(async (req) => {
   const { data: rij } = await admin.from("drafts").insert({
     owner_id: uid, task_id, gmail_draft_id: d.id, thread_id: bron.thread_id, status: "klaar",
   }).select("id").single();
-  await audit(admin, uid, "concept_gemaakt", { object_type: "draft", object_id: rij?.id, model: WRITE_MODEL() });
+  await audit(admin, uid, "concept_gemaakt", {
+    object_type: "draft", object_id: rij?.id, model: WRITE_MODEL(), details: verbruik,
+  });
   return json({ draft_id: rij?.id, tekst: body, gmail_link: threadLink(bron.thread_id) });
 });

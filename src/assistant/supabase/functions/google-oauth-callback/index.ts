@@ -14,11 +14,21 @@ Deno.serve(async (req) => {
   await admin.from("oauth_states").delete().eq("state", state);
   if (!st || new Date(st.verloopt_op) < new Date()) return terug("verlopen");
 
-  const tok = await exchangeCode(code);
-  const refresh = tok.refresh_token as string | undefined;
-  if (!refresh) return terug("geen-refresh-token");
-
-  const profiel = await g<{ emailAddress: string }>(tok.access_token as string, `${GMAIL}/profile`);
+  /* Google kan de code weigeren (te oud, al gebruikt, client opnieuw ingesteld)
+     en het profiel kan mislukken als de toestemming halverwege is ingetrokken.
+     Zonder deze vangst kreeg je een kale 500 van de Edge Function te zien in
+     plaats van het inlogscherm met een reden. */
+  let tok: Record<string, unknown>;
+  let profiel: { emailAddress: string };
+  try {
+    tok = await exchangeCode(code);
+    const refresh = tok.refresh_token as string | undefined;
+    if (!refresh) return terug("geen-refresh-token");
+    profiel = await g<{ emailAddress: string }>(tok.access_token as string, `${GMAIL}/profile`);
+  } catch {
+    return terug("tokenfout");
+  }
+  const refresh = tok.refresh_token as string;
   for (const kind of ["gmail", "calendar", "drive"] as const) {
     const { data: src, error } = await admin.from("sources")
       .upsert({ owner_id: st.owner_id, kind, account: profiel.emailAddress, actief: true },

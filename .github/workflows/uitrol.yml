@@ -1,0 +1,64 @@
+# Wat gecommit is, is wat er draait.
+#
+# Tot nu toe werden de serverfuncties met de hand uitgerold en elk met hun
+# eigen momentopname van `_shared/`. Gevolg: een wijziging in het privacyfilter
+# werkte pas in de functies die daarna toevallig opnieuw waren uitgerold. Bij
+# een privacyfilter is dat niet acceptabel. Deze workflow rolt ze altijd
+# allemaal tegelijk uit, en alleen als de controles groen zijn.
+
+name: Uitrol
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: uitrol
+  cancel-in-progress: false
+
+jobs:
+  uitrol:
+    runs-on: ubuntu-latest
+    # De projectnaam is geen geheim; hij staat ook in .env.example. Eén plek
+    # scheelt hem drie keer herhalen.
+    env:
+      PROJECT_REF: cohgbocslfgxfshelsts
+    defaults:
+      run:
+        working-directory: src/assistant
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/assistant/package-lock.json
+      - run: npm ci
+      - name: Typecheck en bouwen
+        run: npm run build
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Tests van de serverfuncties
+        run: deno test --allow-env --allow-net supabase/functions/_shared
+
+      - name: Tests van de frontend
+        run: npm run test
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Migraties toepassen
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref "$PROJECT_REF"
+          supabase db push
+      - name: Serverfuncties uitrollen
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy --project-ref "$PROJECT_REF"

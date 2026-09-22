@@ -1,6 +1,8 @@
 project_id = "bennaassistent"
 
-# Aangeroepen door pg_cron of Google (eigen beveiliging via CRON_SECRET resp. OAuth-state)
+# Aangeroepen door pg_cron of Google, met eigen beveiliging: de cronfuncties
+# eisen het gedeelde geheim in `x-cron-secret`, de OAuth-terugkeer werkt met de
+# eenmalige state uit `oauth_states`. Een JWT hebben ze geen van beide.
 [functions.gmail-ingest]
 verify_jwt = false
 
@@ -10,10 +12,19 @@ verify_jwt = false
 [functions.daily-brief]
 verify_jwt = false
 
+[functions.week-brief]
+verify_jwt = false
+
+[functions.drive-ingest]
+verify_jwt = false
+
+[functions.retriage]
+verify_jwt = false
+
 [functions.google-oauth-callback]
 verify_jwt = false
 
-# Alleen voor de ingelogde eigenaar
+# Alleen voor de ingelogde eigenaar.
 [functions.google-oauth-start]
 verify_jwt = true
 
@@ -21,4 +32,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.send-draft]
+verify_jwt = true
+
+[functions.task-assist]
 verify_jwt = true

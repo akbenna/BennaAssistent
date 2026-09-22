@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Fout, Icoon, Leeg, Skelet, useAsync, useMelding } from "../components/ui";
+import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync, useMelding } from "../components/ui";
 import { TaakKaart } from "../components/TaakKaart";
 import { TaakPaneel } from "../components/TaakPaneel";
-import { vandaag } from "../lib/format";
-import { haalProjecten, haalTaken, maakTaak } from "../lib/data";
+import { afzenderNaam, relatief, vandaag } from "../lib/format";
+import { haalProjecten, haalSchuldig, haalTaken, maakTaak } from "../lib/data";
 import type { Prioriteit, TaakStatus } from "../types/db";
 
 type TabNaam = "nu" | "open" | "wachten" | "antwoord" | "afgerond" | "alles";
@@ -65,6 +65,8 @@ export function Taken() {
           </select>
         </label>
       )}
+
+      {tab === "wachten" && <Schuldenlijst bijOpenen={setOpen} />}
 
       {taken.laden && <Skelet aantal={5} />}
       {taken.fout && <Fout tekst={taken.fout} opnieuw={taken.herlaad} />}
@@ -172,5 +174,47 @@ export function NieuweTaak({
         </div>
       </aside>
     </div>
+  );
+}
+
+/*
+ * WIE IS MIJ NOG EEN ANTWOORD SCHULDIG
+ *
+ * Dezelfde opvolgingen die op het taakpaneel staan, maar gesorteerd op persoon
+ * in plaats van op taak. Dat is de vorm die je vóór een vergadering nodig hebt:
+ * niet "welke taak wacht", maar "wat heb ik nog van Van Dijk tegoed". Oudste
+ * schuld bovenaan, want daar wil je als eerste achteraan.
+ */
+function Schuldenlijst({ bijOpenen }: { bijOpenen: (id: string) => void }) {
+  const stand = useAsync(() => haalSchuldig(), []);
+  const rijen = stand.data ?? [];
+  if (stand.laden || rijen.length === 0) return null;
+
+  return (
+    <section className="sectie">
+      <header>
+        <h2>Nog van wie tegoed</h2>
+        <span className="aantal">{rijen.length}</span>
+      </header>
+      <div className="kaart">
+        {rijen.map((s) => (
+          <div className="brief-regel" key={s.adres}>
+            <span className="groei">
+              <span className="klein">{afzenderNaam(s.naam)}</span>
+              <div className="mini">
+                {s.taken.map((t) => t.titel ?? "(taak)").join(" · ")}
+              </div>
+            </span>
+            <Merkje kleur={s.aantal > 1 ? "amber" : undefined}>
+              {s.aantal > 1 ? `${s.aantal}× · ` : ""}{relatief(s.oudste)}
+            </Merkje>
+            <button className="knop klein kaal" onClick={() => bijOpenen(s.taken[0]!.id)}
+              aria-label={`Taak van ${afzenderNaam(s.naam)} openen`}>
+              {Icoon.meer({})}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

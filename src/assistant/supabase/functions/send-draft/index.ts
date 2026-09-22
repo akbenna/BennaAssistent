@@ -1,5 +1,6 @@
 import { adminClient, audit, cors, json, userId } from "../_shared/core.ts";
 import { accessToken, g, GMAIL, GoogleError } from "../_shared/google.ts";
+import { bronVanTaak } from "../_shared/verwerk.ts";
 
 // Eén tik = goedkeuren én versturen. Alleen door de ingelogde eigenaar; nooit vanuit cron.
 Deno.serve(async (req) => {
@@ -14,9 +15,11 @@ Deno.serve(async (req) => {
   if (!d) return json({ fout: "concept niet gevonden" }, 404);
   if (!["klaar", "aangepast", "goedgekeurd"].includes(d.status)) return json({ fout: `status is ${d.status}` }, 409);
 
-  const { data: src } = await admin.from("sources").select("id").eq("owner_id", uid).eq("kind", "gmail")
-    .eq("actief", true).limit(1).maybeSingle();
-  if (!src) return json({ fout: "geen actieve Gmail-koppeling" }, 409);
+  // De bron volgt de mailwisseling van de taak, niet "de eerste die er is":
+  // anders kan een antwoord vanuit het verkeerde account vertrekken zodra er
+  // een tweede mailbox gekoppeld is.
+  const src = await bronVanTaak(admin, uid, d.task_id);
+  if (!src) return json({ fout: "kan niet bepalen vanuit welke mailbox dit moet" }, 409);
   const token = await accessToken(admin, src.id);
   const nu = new Date().toISOString();
   let verstuurd: any;
