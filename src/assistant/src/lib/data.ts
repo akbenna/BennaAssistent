@@ -18,10 +18,6 @@ function controleer<T>(res: { data: T | null; error: { message: string } | null 
 
 export const LOPEND: TaakStatus[] = ["open", "wacht_op_antwoord", "antwoord_binnen"];
 
-/** Telquery zonder filters: alle niet-gearchiveerde taken van de eigenaar. */
-const telBasis = () =>
-  supabase.from("tasks").select("id", { count: "exact", head: true }).is("gearchiveerd_op", null);
-
 export async function haalTaken(opties: {
   statussen?: TaakStatus[];
   projectId?: string | null;
@@ -52,22 +48,14 @@ export interface Tellingen {
   antwoord: number;
 }
 
+/* Eén rondje in plaats van vier. De tabbalk vraagt dit bij elke navigatie en
+   elke minuut; vier losse HEAD-verzoeken waren daar een verspilling. De dag
+   wordt in de database bepaald, in Amsterdamse tijd — de browser van een
+   reizende gebruiker mag daar niet over meebeslissen. */
 export async function haalTellingen(): Promise<Tellingen> {
-  const [voorstellen, vandaagAantal, wachten, antwoord] = await Promise.all([
-    telUit(telBasis().eq("status", "voorstel")),
-    telUit(telBasis().in("status", ["open", "antwoord_binnen"]).lte("deadline", vandaag())),
-    telUit(telBasis().eq("status", "wacht_op_antwoord")),
-    telUit(telBasis().eq("status", "antwoord_binnen")),
-  ]);
-  return { voorstellen, vandaag: vandaagAantal, wachten, antwoord };
-}
-
-async function telUit(
-  query: PromiseLike<{ count: number | null; error: { message: string } | null }>,
-): Promise<number> {
-  const { count, error } = await query;
+  const { data, error } = await supabase.rpc("tellingen");
   if (error) throw new Error(error.message);
-  return count ?? 0;
+  return data as Tellingen;
 }
 
 export async function haalDagoverzicht(datum = vandaag()): Promise<Dagoverzicht | null> {
@@ -416,10 +404,10 @@ const KOPPELING_VELDEN = "id,naam,url,omschrijving,groep,volgorde,actief";
 export async function haalKoppelingen(metInactief = false): Promise<Koppeling[]> {
   let q = supabase.from("koppelingen").select(KOPPELING_VELDEN);
   if (!metInactief) q = q.eq("actief", true);
-  return controleer(
-    await q.order("groep", { ascending: true, nullsFirst: false })
-      .order("volgorde").order("naam").returns<Koppeling[]>(),
-  );
+  // Op volgorde en niet op groepsnaam: alfabetisch zou "Dagelijks" tussen
+  // Analyse en Zorg zetten. De nummers staan per groep in een eigen honderdtal,
+  // zodat één sortering zowel de groepen als de tegels erbinnen ordent.
+  return controleer(await q.order("volgorde").order("naam").returns<Koppeling[]>());
 }
 
 export async function bewaarKoppeling(k: Omit<Koppeling, "id"> & { id?: string }): Promise<void> {

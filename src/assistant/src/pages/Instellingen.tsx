@@ -456,7 +456,7 @@ function Doorsteek({ koppelingen, bijWijziging }: { koppelingen: Koppeling[]; bi
         naam: naam.trim(), url: url.trim(),
         omschrijving: omschrijving.trim() || null,
         groep: groep.trim() || null,
-        volgorde: 100, actief: true,
+        volgorde: 400, actief: true,
       });
       setNaam(""); setUrl(""); setOmschrijving("");
       bijWijziging();

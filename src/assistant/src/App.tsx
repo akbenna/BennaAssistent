@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Icoon } from "./components/ui";
 import { useSessie } from "./lib/auth";
@@ -8,10 +8,14 @@ import { Login } from "./pages/Login";
 import { Vandaag } from "./pages/Vandaag";
 import { Voorstellen } from "./pages/Voorstellen";
 import { Taken } from "./pages/Taken";
-import { Projecten } from "./pages/Projecten";
-import { Instellingen } from "./pages/Instellingen";
-import { Declaraties } from "./pages/Declaraties";
-import { Delen } from "./pages/Delen";
+
+/* Vandaag, Voorstellen en Taken zijn de dagelijkse route; die laden meteen.
+   De rest komt pas als je erheen gaat. Dat scheelt vooral bij Declaraties:
+   daar hangt de hele xlsx-lezer aan, en die heb je één keer per maand nodig. */
+const Projecten = lazy(() => import("./pages/Projecten").then((m) => ({ default: m.Projecten })));
+const Instellingen = lazy(() => import("./pages/Instellingen").then((m) => ({ default: m.Instellingen })));
+const Declaraties = lazy(() => import("./pages/Declaraties").then((m) => ({ default: m.Declaraties })));
+const Delen = lazy(() => import("./pages/Delen").then((m) => ({ default: m.Delen })));
 
 export default function App() {
   const { sessie, gereed } = useSessie();
@@ -31,16 +35,18 @@ export default function App() {
         <span className="rechts"><ThemaKnop /></span>
       </header>
       <main className="inhoud">
-        <Routes>
-          <Route path="/" element={<Vandaag />} />
-          <Route path="/voorstellen" element={<Voorstellen />} />
-          <Route path="/taken" element={<Taken />} />
-          <Route path="/projecten" element={<Projecten />} />
-          <Route path="/declaraties" element={<Declaraties />} />
-          <Route path="/instellingen" element={<Instellingen />} />
-          <Route path="/delen" element={<Delen />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<p className="mini">Even laden…</p>}>
+          <Routes>
+            <Route path="/" element={<Vandaag />} />
+            <Route path="/voorstellen" element={<Voorstellen />} />
+            <Route path="/taken" element={<Taken />} />
+            <Route path="/projecten" element={<Projecten />} />
+            <Route path="/declaraties" element={<Declaraties />} />
+            <Route path="/instellingen" element={<Instellingen />} />
+            <Route path="/delen" element={<Delen />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
       <Navigatie />
     </div>
