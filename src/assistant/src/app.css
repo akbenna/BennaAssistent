@@ -224,21 +224,23 @@ button, input, select, textarea { font-family: inherit; font-size: 1rem; color: 
 
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   padding: 0.35rem 0.4rem max(0.35rem, env(safe-area-inset-bottom));
   background: var(--vlak);
   border-top: 1px solid var(--lijn);
 }
 .nav a {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 0.4rem 0.2rem; border-radius: 9px;
-  font-size: 0.68rem; line-height: 1.1; color: var(--grijs);
+  padding: 0.4rem 0.1rem; border-radius: 9px;
+  /* Zes tabs op een telefoon van 320 punten: de letter moet een halve punt
+     kleiner en het woord mag niet afbreken. */
+  font-size: 0.63rem; line-height: 1.1; color: var(--grijs); white-space: nowrap;
   text-decoration: none; position: relative;
 }
 .nav a.actief { color: var(--k); background: var(--kbg); font-weight: 600; }
 .nav svg { width: 20px; height: 20px; }
 .nav .teller {
-  position: absolute; top: 2px; right: calc(50% - 21px);
+  position: absolute; top: 2px; right: calc(50% - 19px);
   min-width: 16px; height: 16px; padding: 0 4px;
   display: grid; place-items: center;
   background: var(--kfel); color: #fff;
