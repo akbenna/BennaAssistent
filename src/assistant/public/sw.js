@@ -24,6 +24,12 @@ async function snoei(cache) {
   for (const oud of sleutels.slice(0, sleutels.length - MAX)) await cache.delete(oud);
 }
 
+/* Een nieuwe versie neemt het meteen over. Dat mag hier, omdat deze worker
+   alleen gehashte bestanden bewaart: hij kan geen oude app opdienen. Zonder
+   dit zou de deelafhandeling hieronder pas na het sluiten van alle tabbladen
+   gaan werken. */
+self.addEventListener("install", (e) => e.waitUntil(self.skipWaiting()));
+
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
@@ -36,10 +42,43 @@ const bewaarbaar = (url) =>
   url.origin === self.location.origin
   && (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/icons/"));
 
+/*
+ * DELEN GAAT MET POST, EN BLIJFT DAARMEE BINNEN DE TELEFOON
+ *
+ * Het deelmenu stuurde de gedeelde tekst eerder als querystring mee. Die komt
+ * dan in het adres te staan en dus in de logboeken van de hoster — voor een
+ * dictaat of een stuk correspondentie is dat de verkeerde plek.
+ *
+ * Nu vangt deze worker de POST af, legt de velden in een cache die het
+ * apparaat niet verlaat, en stuurt de browser door naar /delen?deel=1. De
+ * pagina haalt het daar op en gooit het meteen weg. Er gaat niets over de lijn.
+ */
+const DEELCACHE = "benna-deel";
+const DEELSLEUTEL = "/__gedeeld";
+
+async function vangDeel(request) {
+  try {
+    const f = await request.formData();
+    const inhoud = JSON.stringify({
+      titel: f.get("titel") ?? "", tekst: f.get("tekst") ?? "", url: f.get("url") ?? "",
+    });
+    const c = await caches.open(DEELCACHE);
+    await c.put(DEELSLEUTEL, new Response(inhoud, { headers: { "Content-Type": "application/json" } }));
+  } catch {
+    /* Lukt het niet, dan opent /delen gewoon leeg; beter dan een foutpagina. */
+  }
+  return Response.redirect("/delen?deel=1", 303);
+}
+
 self.addEventListener("fetch", (e) => {
+  const verzoek = new URL(e.request.url);
+  if (e.request.method === "POST" && verzoek.origin === self.location.origin
+      && verzoek.pathname === "/delen") {
+    e.respondWith(vangDeel(e.request));
+    return;
+  }
   if (e.request.method !== "GET") return;
-  const url = new URL(e.request.url);
-  if (!bewaarbaar(url)) return;
+  if (!bewaarbaar(verzoek)) return;
 
   e.respondWith(
     caches.match(e.request).then((gevonden) => {

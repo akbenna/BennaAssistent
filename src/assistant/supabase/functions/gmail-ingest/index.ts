@@ -1,18 +1,36 @@
 import { adminClient, audit, isCron, json, type Admin } from "../_shared/core.ts";
 import { accessToken, g, GMAIL, GoogleError, parseMessage, threadLink } from "../_shared/google.ts";
 import { checkPrivacy, type FilterRow } from "../_shared/privacy.ts";
-import { triage, TRIAGE_MODEL } from "../_shared/claude.ts";
+import { triageEnVoorstel, type Projectje } from "../_shared/verwerk.ts";
 
 const OVERSLAAN = ["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "SPAM", "TRASH", "DRAFT"];
 const domein = (a: string) => (a.toLowerCase().match(/@([a-z0-9.-]+)/)?.[1] ?? "");
 
+/* Hoe ver we terugkijken als er geen peil is, of als Google het peil niet meer
+   kent. Drie dagen was te krap: na een storing van een week zat er een gat in
+   de mail dat nooit meer werd ingehaald. Zeven dagen kost bij een eerste ronde
+   wat meer modelaanroepen en is dat waard. */
+const TERUGKIJKEN = "newer_than:7d";
+
 async function nieuweIds(token: string, cursor: string | null): Promise<{ ids: string[]; cursor: string }> {
-  const beginOpnieuw = async (q: string) => {
-    const l = await g(token, `${GMAIL}/messages?q=${encodeURIComponent(q)}&maxResults=50`);
+  const beginOpnieuw = async () => {
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const u = new URL(`${GMAIL}/messages`);
+      u.searchParams.set("q", TERUGKIJKEN);
+      u.searchParams.set("maxResults", "100");
+      if (pageToken) u.searchParams.set("pageToken", pageToken);
+      const l = await g(token, u.toString());
+      for (const m of l.messages ?? []) ids.push(m.id);
+      pageToken = l.nextPageToken;
+      // Twee bladzijden is genoeg: meer dan tweehonderd berichten in een week
+      // wil je niet in één ronde door het model halen.
+    } while (pageToken && ids.length < 200);
     const p = await g(token, `${GMAIL}/profile`);
-    return { ids: (l.messages ?? []).map((m: any) => m.id), cursor: String(p.historyId) };
+    return { ids, cursor: String(p.historyId) };
   };
-  if (!cursor) return beginOpnieuw("newer_than:3d");
+  if (!cursor) return beginOpnieuw();
   try {
     const ids: string[] = [];
     let pageToken: string | undefined;
@@ -30,19 +48,11 @@ async function nieuweIds(token: string, cursor: string | null): Promise<{ ids: s
     } while (pageToken);
     return { ids, cursor: laatste };
   } catch (e) {
-    if (e instanceof GoogleError && e.status === 404) return beginOpnieuw("newer_than:1d");
+    // Een peil ouder dan ongeveer een week kent Google niet meer; dan maar
+    // opnieuw beginnen in plaats van niets ophalen.
+    if (e instanceof GoogleError && e.status === 404) return beginOpnieuw();
     throw e;
   }
-}
-
-function kiesProject(projects: any[], from: string, subject: string, text: string): string | null {
-  const f = from.toLowerCase();
-  const inhoud = `${subject}\n${text}`.toLowerCase();
-  for (const p of projects) {
-    if ((p.afzenders ?? []).some((a: string) => a && f.includes(a.toLowerCase()))) return p.id;
-    if ((p.trefwoorden ?? []).some((t: string) => t && inhoud.includes(t.toLowerCase()))) return p.id;
-  }
-  return null;
 }
 
 async function verwerkBron(admin: Admin, src: any) {
@@ -61,16 +71,13 @@ async function verwerkBron(admin: Admin, src: any) {
   const labelLijst = await g(token, `${GMAIL}/labels`);
   const labelNaam = new Map<string, string>((labelLijst.labels ?? []).map((l: any) => [l.id, l.name]));
 
-  let verwerkt = 0, uitgesloten = 0, voorstellen = 0, verdwenen = 0;
+  let verwerkt = 0, uitgesloten = 0, voorstellen = 0, verdwenen = 0, mislukt = 0;
   for (const id of uniek) {
     if (bestaand.has(id)) continue;
 
     /* De geschiedenis noemt ook berichten die inmiddels weg zijn: verwijderd,
        of definitief uit de prullenbak gegooid. Google antwoordt dan met 404.
-       Dat is geen storing maar een mail die er niet meer is. Zonder deze
-       uitzondering brak de hele ronde af op dat ene bericht, werd de cursor
-       niet opgeschoven, en herhaalde dezelfde fout zich elke tien minuten —
-       waarbij alle mail ná dat bericht ongezien bleef. */
+       Dat is geen storing maar een mail die er niet meer is. */
     let ruw: unknown;
     try {
       ruw = await g(token, `${GMAIL}/messages/${id}?format=full`);
@@ -97,28 +104,29 @@ async function verwerkBron(admin: Admin, src: any) {
       continue;
     }
 
-    const t = await triage(m);
-    await audit(admin, src.owner_id, "triage", { object_type: "gmail", object_id: m.id, model: TRIAGE_MODEL(),
-      details: { categorie: t.categorie } });
-    const { data: item } = await admin.from("items").insert({ ...basis, afzender: m.from, onderwerp: m.subject,
-      samenvatting: t.samenvatting }).select("id").single();
+    /* Eerst opslaan, dan pas het model. Zo overleeft het bericht een storing
+       bij Claude, schuift de cursor door en blijft de rest van de post niet
+       achter één rotbericht steken. `retriage` haalt vannacht de samenvatting
+       alsnog op. */
+    const { data: item, error } = await admin.from("items")
+      .insert({ ...basis, afzender: m.from, onderwerp: m.subject, samenvatting: null })
+      .select("id").single();
+    if (error || !item) { mislukt++; continue; }
     verwerkt++;
 
-    if (t.categorie === "actie" && item) {
-      const { data: taak } = await admin.from("tasks").insert({
-        owner_id: src.owner_id, titel: t.titel, toelichting: t.toelichting, status: "voorstel",
-        prioriteit: t.prioriteit, deadline: t.deadline, aangemaakt_door: "assistent",
-        project_id: kiesProject(projects ?? [], m.from, m.subject, m.text),
-      }).select("id").single();
-      if (taak) {
-        await admin.from("task_links").insert({ owner_id: src.owner_id, task_id: taak.id, item_id: item.id, rol: "bron" });
-        voorstellen++;
-      }
+    try {
+      const uit = await triageEnVoorstel(admin, src.owner_id, item.id, m, (projects ?? []) as Projectje[]);
+      if (uit === "voorstel") voorstellen++;
+    } catch (e) {
+      mislukt++;
+      await audit(admin, src.owner_id, "triage_fout", {
+        object_type: "gmail", object_id: m.id, details: { fout: String(e).slice(0, 300) },
+      });
     }
   }
   await admin.from("sources").update({ sync_cursor: cursor, laatst_gesynct: new Date().toISOString(), laatste_fout: null })
     .eq("id", src.id);
-  return { bron: src.account, verwerkt, uitgesloten, voorstellen, verdwenen };
+  return { bron: src.account, verwerkt, uitgesloten, voorstellen, verdwenen, mislukt };
 }
 
 Deno.serve(async (req) => {

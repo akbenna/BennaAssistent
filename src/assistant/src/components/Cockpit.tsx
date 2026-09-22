@@ -3,9 +3,17 @@ import { Icoon, useAsync } from "./ui";
 import { haalKoppelingen } from "../lib/data";
 import type { Koppeling } from "../types/db";
 
-/* Een url die met een schuine streep begint hoort bij deze app zelf; die mag
-   niet door een nieuw tabblad, anders verlies je je plek. */
-const intern = (url: string) => url.startsWith("/");
+/*
+ * Een url die met één schuine streep begint hoort bij deze app zelf; die mag
+ * niet door een nieuw tabblad, anders verlies je je plek.
+ *
+ * Twee strepen of een streep met een backslash zijn géén interne link maar een
+ * adres naar buiten: "//elders.nl" en "/\elders.nl" laat de browser uitkomen
+ * bij elders.nl. Ze staan hier in een tabel die de eigenaar zelf vult, dus het
+ * is geen aanval, maar wel precies het soort omweg waarmee een geplakte link
+ * je ongemerkt de deur uit stuurt.
+ */
+const intern = (url: string) => /^\/(?![/\\])/.test(url);
 
 function Tegel({ k }: { k: Koppeling }) {
   const binnenkant = (

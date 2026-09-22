@@ -4,7 +4,7 @@ import { Icoon } from "./components/ui";
 import { useSessie } from "./lib/auth";
 import { haalTellingen, type Tellingen } from "./lib/data";
 import { huidigThema, THEMA_LABEL, volgendThema, zetThema, type Thema } from "./lib/thema";
-import { Login } from "./pages/Login";
+import { Login, TweedeStap } from "./pages/Login";
 import { Vandaag } from "./pages/Vandaag";
 import { Voorstellen } from "./pages/Voorstellen";
 import { Taken } from "./pages/Taken";
@@ -18,12 +18,13 @@ const Declaraties = lazy(() => import("./pages/Declaraties").then((m) => ({ defa
 const Delen = lazy(() => import("./pages/Delen").then((m) => ({ default: m.Delen })));
 
 export default function App() {
-  const { sessie, gereed } = useSessie();
+  const { sessie, gereed, tweedeStapNodig } = useSessie();
 
   if (!gereed) {
     return <main style={{ display: "grid", placeItems: "center", height: "100%" }}><span className="mini">Even laden…</span></main>;
   }
   if (!sessie) return <Login />;
+  if (tweedeStapNodig) return <TweedeStap />;
 
   return (
     <div className="schil">

@@ -18,6 +18,7 @@ const GOOGLE_MELDING: Record<string, string> = {
   "geen-refresh-token": "Google gaf geen vernieuwingstoken. Ontkoppel de app in je Google-account en koppel opnieuw.",
   opslagfout: "De koppeling kon niet worden opgeslagen.",
   vaultfout: "Het token kon niet veilig worden opgeborgen.",
+  tokenfout: "Google weigerde de koppelcode. Meestal is de poging te lang blijven liggen; probeer het opnieuw.",
 };
 
 const FILTER_UITLEG: Record<FilterSoort, string> = {
@@ -218,6 +219,7 @@ export function Instellingen() {
           <button className="knop" onClick={() => void afmelden()}>Afmelden</button>
         </div>
         <Wachtwoord />
+        <TweeStappen />
       </section>
     </>
   );
@@ -554,6 +556,127 @@ function Onderhoud({ ritmes, bijWijziging }: { ritmes: TerugkerendRij[]; bijWijz
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/*
+ * TWEESTAPSVERIFICATIE
+ *
+ * Met een wachtwoord alleen kan wie het raadt of ergens vandaan haalt namens
+ * jou mail versturen vanuit jouw Gmail — dat is precies wat deze app kan. Een
+ * zescijferige code uit je telefoon sluit dat af.
+ *
+ * Er zijn met opzet geen herstelcodes. Die moet je ergens bewaren, en dat wordt
+ * in de praktijk een briefje of een notitie-app; de inloglink per mail is het
+ * vangnet en die heb je al. Raak je je telefoon kwijt, dan haal je de factor
+ * weg via de inloglink.
+ */
+function TweeStappen() {
+  const meld = useMelding();
+  const stand = useAsync(async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) throw new Error(error.message);
+    return (data.totp ?? []).filter((f) => f.status === "verified");
+  }, []);
+  const [bezig, setBezig] = useState(false);
+  const [nieuw, setNieuw] = useState<{ id: string; qr: string; geheim: string } | null>(null);
+  const [code, setCode] = useState("");
+
+  async function begin() {
+    setBezig(true);
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: `BennaAssistent ${new Date().toLocaleDateString("nl-NL")}`,
+      });
+      if (error) throw new Error(error.message);
+      setNieuw({ id: data.id, qr: data.totp.qr_code, geheim: data.totp.secret });
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    } finally {
+      setBezig(false);
+    }
+  }
+
+  async function bevestig() {
+    if (!nieuw) return;
+    setBezig(true);
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: nieuw.id,
+        code: code.replace(/\s/g, ""),
+      });
+      if (error) throw new Error(error.message);
+      setNieuw(null);
+      setCode("");
+      stand.herlaad();
+      meld("Tweestapsverificatie staat aan.");
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    } finally {
+      setBezig(false);
+    }
+  }
+
+  async function weg(id: string) {
+    if (!window.confirm("Tweestapsverificatie uitzetten? Je account is daarna alleen door je wachtwoord beschermd.")) return;
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: id });
+      if (error) throw new Error(error.message);
+      stand.herlaad();
+      meld("Tweestapsverificatie staat uit.");
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+    }
+  }
+
+  const aan = (stand.data ?? []).length > 0;
+
+  if (nieuw) {
+    return (
+      <div className="kaart let" style={{ marginTop: "0.6rem" }}>
+        <p className="klein" style={{ marginTop: 0 }}>
+          Scan deze code met je authenticator-app (1Password, Google Authenticator, Bitwarden)
+          en tik daarna de zes cijfers in die hij toont.
+        </p>
+        <img src={nieuw.qr} alt="QR-code voor je authenticator-app" width={180} height={180}
+          style={{ background: "#fff", borderRadius: 8, padding: 6 }} />
+        <p className="mini">Werkt scannen niet, tik dan deze sleutel over: <code>{nieuw.geheim}</code></p>
+        <label className="veld">
+          <span>De zes cijfers</span>
+          <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={7}
+            value={code} onChange={(e) => setCode(e.target.value)} />
+        </label>
+        <div className="knoppen">
+          <button className="knop primair klein" disabled={bezig || code.replace(/\s/g, "").length < 6}
+            onClick={() => void bevestig()}>
+            {bezig ? "Bezig…" : "Aanzetten"}
+          </button>
+          <button className="knop klein" onClick={() => { setNieuw(null); setCode(""); }}>Annuleren</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "0.6rem" }}>
+      {aan ? (
+        <div className="rij">
+          <Merkje kleur="groen">{Icoon.vink({})} tweestapsverificatie aan</Merkje>
+          <button className="knop klein kaal" onClick={() => void weg(stand.data![0]!.id)}>Uitzetten</button>
+        </div>
+      ) : (
+        <>
+          <p className="mini" style={{ margin: "0 0 0.4rem" }}>
+            Deze app kan namens jou mail versturen. Een code uit je telefoon erbij maakt een
+            gestolen wachtwoord waardeloos.
+          </p>
+          <button className="knop klein" disabled={bezig} onClick={() => void begin()}>
+            Tweestapsverificatie aanzetten
+          </button>
+        </>
+      )}
     </div>
   );
 }

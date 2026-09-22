@@ -1,0 +1,63 @@
+# Elke nacht een kopie, los van wat het Supabase-plan zelf bewaart.
+#
+# Op het gratis plan maakt Supabase geen back-ups. Ook op een betaald plan is
+# een eigen kopie de moeite waard: hij staat ergens anders, en hij is met
+# `psql < bestand` terug te zetten zonder dat er een leverancier aan te pas komt.
+#
+# De dump bevat de mailonderwerpen en afzenders uit `items`. Hij gaat daarom
+# naar een release van deze repository — die is privé zolang de repository dat
+# is — en niet naar een artefact, want artefacten zijn te downloaden door
+# iedereen met leesrecht op de Actions.
+
+name: Nachtelijke back-up
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Schema en gegevens wegschrijven
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase link --project-ref cohgbocslfgxfshelsts
+          supabase db dump --file schema.sql
+          supabase db dump --file gegevens.sql --data-only
+          gzip schema.sql gegevens.sql
+
+      - name: Als release bewaren
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="backup-$(date -u +%Y-%m-%d)"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" schema.sql.gz gegevens.sql.gz \
+            --title "Back-up $(date -u +%d-%m-%Y)" \
+            --notes "Automatische nachtelijke kopie van het BennaAssistent-project."
+
+      - name: Ouder dan dertig dagen opruimen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Nieuwste dertig houden, de rest weg. Zonder deze stap groeit het
+          # aantal releases eeuwig door.
+          gh release list --limit 200 --json tagName \
+            --jq '.[].tagName | select(startswith("backup-"))' \
+            | sort -r | tail -n +31 \
+            | while read -r tag; do gh release delete "$tag" --yes --cleanup-tag; done
