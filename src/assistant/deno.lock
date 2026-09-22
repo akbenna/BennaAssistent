@@ -23,6 +23,7 @@
         "npm:@types/react-dom@^18.3.0",
         "npm:@types/react@^18.3.11",
         "npm:@vitejs/plugin-react@^6.1.1",
+        "npm:happy-dom@^20.14.5",
         "npm:react-dom@^18.3.1",
         "npm:react-router-dom@^7.18.4",
         "npm:react@^18.3.1",

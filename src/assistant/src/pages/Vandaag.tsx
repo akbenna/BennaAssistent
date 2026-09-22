@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync } from "../components/ui";
 import { Sfeer, type SfeerSoort } from "../components/sfeer";
+import type { Weekoverzicht } from "../types/db";
 import { Cockpit } from "../components/Cockpit";
 import { TaakKaart } from "../components/TaakKaart";
 import { TaakPaneel } from "../components/TaakPaneel";
-import { datumLang, deadlineToon, relatief, tijdKort, vandaag } from "../lib/format";
-import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalTaken, haalTellingen } from "../lib/data";
+import { datumKort, datumLang, deadlineToon, relatief, tijdKort, vandaag } from "../lib/format";
+import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalTaken, haalTellingen, haalWeekoverzicht } from "../lib/data";
 
 /* De groet volgt het uur in Amsterdam en niet dat van de browser: wie vanuit
    een andere tijdzone inlogt kijkt naar een Nederlandse werkdag. */
@@ -28,6 +29,7 @@ export function Vandaag() {
   const overzicht = useAsync(() => haalDagoverzicht(), [ronde]);
   const strook = useAsync(() => haalAfrondingenPerDag(14), [ronde]);
   const documenten = useAsync(() => haalDocumenten(6), [ronde]);
+  const week = useAsync(() => haalWeekoverzicht(), [ronde]);
   const nu = useAsync(
     () => haalTaken({ statussen: ["open", "antwoord_binnen"], deadlineTot: vandaag(), limiet: 25 }),
     [ronde],
@@ -93,6 +95,8 @@ export function Vandaag() {
           </>
         )}
       </section>
+
+      {week.data && <Weekstart w={week.data} bijOpenen={setOpen} />}
 
       <section className="sectie">
         <header>
@@ -223,4 +227,66 @@ function samenvattingsregel(
     return afgerond === 1 ? "Eén taak afgerond vandaag" : `${afgerond} taken afgerond vandaag`;
   }
   return "Niets dat op je wacht";
+}
+
+/*
+ * DE WEEK IN ÉÉN BLOK
+ *
+ * Staat boven de agenda en blijft de hele week staan: het wordt op maandag
+ * gemaakt en je kijkt er donderdag net zo goed naar. Vier dingen die je
+ * nergens anders bij elkaar ziet — wat er aankomt, welk portaalonderhoud
+ * verschijnt, wie je nog een antwoord schuldig is, en welke dossiers stil zijn
+ * geworden. Dat laatste is waarvoor dit blok bestaat.
+ */
+function Weekstart({ w, bijOpenen }: { w: Weekoverzicht; bijOpenen: (id: string) => void }) {
+  const deadlines = w.deadlines ?? [];
+  const onderhoud = w.onderhoud ?? [];
+  const wachten = w.wachten ?? [];
+  const stil = w.stille_projecten ?? [];
+  if (!deadlines.length && !onderhoud.length && !wachten.length && !stil.length) return null;
+
+  return (
+    <section className="sectie">
+      <header>
+        <h2>Deze week</h2>
+        <span className="aantal">{datumKort(w.maandag)} – {datumKort(w.zondag)}</span>
+      </header>
+      <div className="kaart">
+        {deadlines.map((t) => (
+          <div className="brief-regel" key={t.id}>
+            <span className="tijd">{datumKort(t.deadline)}</span>
+            <button type="button" className="groei klein"
+              style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer", color: "inherit" }}
+              onClick={() => bijOpenen(t.id)}>
+              {t.titel}
+            </button>
+          </div>
+        ))}
+        {onderhoud.map((o) => (
+          <div className="brief-regel" key={o.titel}>
+            <span className="tijd">{datumKort(o.wanneer)}</span>
+            <span className="groei klein">
+              {o.link && !o.link.startsWith("/")
+                ? <a href={o.link} target="_blank" rel="noreferrer">{o.titel}</a>
+                : o.titel}
+              <div className="mini">terugkerend onderhoud</div>
+            </span>
+          </div>
+        ))}
+        {wachten.length > 0 && (
+          <p className="mini" style={{ margin: "0.6rem 0 0" }}>
+            {wachten.length === 1
+              ? "Op één verstuurde mail kwam nog geen antwoord."
+              : `Op ${wachten.length} verstuurde mails kwam nog geen antwoord.`}{" "}
+            <Link to="/taken">Bekijk van wie.</Link>
+          </p>
+        )}
+        {stil.length > 0 && (
+          <p className="mini" style={{ margin: "0.4rem 0 0" }}>
+            Veertien dagen stil: {stil.map((p) => p.naam).join(", ")}.
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }

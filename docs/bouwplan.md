@@ -1,15 +1,28 @@
 # Bouwplan na de audit van 22 september 2026
 
-De audit staat in het gesprek van die dag; dit is het uitvoeringsdeel. De
-beslissingen hieronder zijn genomen. Wie dit bouwt hoeft ze niet opnieuw te
-wegen — alleen uit te voeren, te testen en te committen. Waar nog wél een
-keuze openstaat, staat dat er uitdrukkelijk bij.
+De audit staat in het gesprek van die dag; dit is het uitvoeringsdeel.
+
+**Stand van zaken: blok 1, blok 2 en 3.1 tot en met 3.4 zijn gebouwd,
+uitgerold en getoetst.** Wat hieronder blijft staan is de onderbouwing — welke
+keuze is gemaakt en waarom — plus het werk dat met opzet is blijven liggen
+(3.5 en 3.6) en de twee dingen die de eigenaar zelf moet doen.
+
+## Wat de eigenaar zelf moet doen
+
+1. In GitHub onder Settings → Secrets → Actions twee waarden zetten:
+   `SUPABASE_ACCESS_TOKEN` (Supabase → Account → Access Tokens) en
+   `SUPABASE_DB_PASSWORD`. Zonder die twee kunnen de Actions niet uitrollen en
+   geen back-up maken; alles is nu met de hand uitgerold.
+2. In Supabase onder Authentication → Sign In / Providers → Email de schakelaar
+   *Prevent use of leaked passwords* aanzetten. Vergt het Pro-plan.
+3. Op Instellingen de tweestapsverificatie aanzetten. Dat kost één minuut en
+   het is de grootste beveiligingswinst die er nog ligt.
 
 Werkwijze voor elk punt: kleine commit, Nederlandse commit-tekst die het
 waarom uitlegt, typecheck en tests groen vóór de push. Serverfuncties na
 wijziging opnieuw uitrollen met álle vier `_shared`-bestanden erbij.
 
-## Blok 1 — continuïteit (eerst)
+## Blok 1 — continuïteit — GEBOUWD
 
 ### 1.1 Schema in de repo
 Doel: `src/assistant/supabase/migrations/` bestaat en bevat het volledige
@@ -43,7 +56,7 @@ app. Herstelcodes hoeven niet: de inloglink is het vangnet.
 `supabase functions deploy` (alle functies), `supabase db push`. Faalt een
 stap, dan wordt er niets uitgerold.
 
-## Blok 2 — robuustheid
+## Blok 2 — robuustheid — GEBOUWD
 
 ### 2.1 Vangnet per bericht in gmail-ingest
 Beslissing: rond `triage(m)` en de daaropvolgende inserts een `try`. Bij een
@@ -103,9 +116,9 @@ Vastleggen in `docs/beheer.md` en in het verwerkingsregister van de praktijk.
   `newer_than:7d`, `maxResults=200` met paginering. Eén constante bovenaan,
   met de reden.
 
-## Blok 3 — slim (denkwerk deels nog open)
+## Blok 3 — slim
 
-### 3.1 Gezondheidstegel — beslist, bouwen
+### 3.1 Gezondheidstegel — GEBOUWD
 SQL-functie `cron_gezondheid()` (security definer, alleen authenticated)
 geeft per job: naam, laatste starttijd, laatste status, laatste foutmelding
 (max 200 tekens), aantal mislukt in 24 uur. Géén `command`-kolom (bevat de
@@ -113,7 +126,7 @@ URL). Op Instellingen bovenaan een kaart: groen als alles in 24 uur is
 geslaagd, amber bij één misser, rood bij twee of meer achter elkaar, met de
 foutregel eronder. Plus `laatste_fout` van de drie bronnen in dezelfde kaart.
 
-### 3.2 Weekstart — beslist, bouwen
+### 3.2 Weekstart — GEBOUWD
 Functie `week-brief`, cron maandag 05:00 UTC, zelfde opbouw als `daily-brief`,
 schrijft `briefs` met `datum` = maandag en `soort = 'week'` (kolom toevoegen,
 default `'dag'`). Inhoud: deadlines deze week, terugkerend onderhoud dat
@@ -122,12 +135,12 @@ opvolgingen zonder antwoord gegroepeerd per afzender, projecten zonder
 taak- of itembeweging in 14 dagen. Op Vandaag op maandag een blok
 "Deze week" boven de agenda.
 
-### 3.3 Kostenbewaking — beslist, bouwen
+### 3.3 Kostenbewaking — GEBOUWD
 `_shared/claude.ts` `call()`: `usage.input_tokens` en `output_tokens` uit
 het antwoord teruggeven; elke auditregel met `model` krijgt ze in `details`.
 Instellingen → Logboek: maandtotaal tokens per model, bovenaan.
 
-### 3.4 Wie is mij iets schuldig — beslist, bouwen
+### 3.4 Wie is mij iets schuldig — GEBOUWD
 Pagina-onderdeel op Taken, tab "Wacht op antwoord": groeperen op het
 e-mailadres uit de gekoppelde bron, oudste eerst, met dagen wachtend.
 
@@ -143,3 +156,28 @@ endpoint, welke sleutel. Eerst ontwerpen in dat repo, dan hier ophalen.
 
 ### 3.7 Nieuwsbrieven-digest, agenda-voorbereiding, Outlook
 Later; geen open ontwerpvragen van betekenis, maar ook geen haast.
+
+## Onderweg bijgekomen
+
+Niet gepland, wel gedaan, omdat het tijdens het bouwen bovenkwam.
+
+**Zeven kwetsbaarheden uit `npm audit`.** Vite, de router en vitest zijn
+bijgewerkt; nul bevindingen nu. Eén ervan raakte deze app echt: de cockpit
+rendert een link uit de database, en react-router 6 stuurde `/\elders.nl` als
+"interne" link naar buiten. Die controle is nu een echte controle
+(`/^\/(?![/\\])/`), los van de versiesprong.
+
+**De cronopdrachten lezen de URL uit de Vault.** Het plan zei daar niets over,
+maar de placeholder-fout van 21 september — twintig mislukte rondes omdat
+`<PROJECT_REF>` nooit was ingevuld — kon alleen terugkomen zolang die URL met
+de hand in elke opdracht stond. Nu staat hij één keer in de Vault en haalt
+`roep_functie()` hem daar op.
+
+**README en beheerdocument.** De audit noemde het ontbreken ervan een
+organisatorisch gat; ze kostten weinig en staan er nu.
+
+## Wat met opzet is blijven liggen
+
+3.5 (Bricks-export via mail) en 3.6 (portaalstatus in de cockpit) vergen eerst
+denkwerk dat nog niet is gedaan — zie de beschrijvingen hierboven. Niet bouwen
+voordat dat rond is.

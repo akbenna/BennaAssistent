@@ -6,7 +6,7 @@ import { roepFunctie, supabase } from "../lib/supabase";
 import { useSessie } from "../lib/auth";
 import {
   bewaarFilter, bewaarKoppeling, bewaarSjabloon, bewaarTerugkerend, haalBronnen, haalFilters,
-  haalKoppelingen, haalLogboek, haalSjablonen, haalTerugkerend,
+  haalGezondheid, haalKoppelingen, haalLogboek, haalSjablonen, haalTerugkerend, haalVerbruik,
   verwijderFilter, verwijderKoppeling, verwijderSjabloon,
 } from "../lib/data";
 import type { FilterSoort, Koppeling, Sjabloon, TerugkerendRij } from "../types/db";
@@ -69,6 +69,8 @@ export function Instellingen() {
         <p className="opschrift">Onder de motorkap</p>
         <h1>Instellingen</h1>
       </div>
+
+      <Nachtploeg />
 
       <section className="sectie">
         <header><h2>Google</h2></header>
@@ -192,6 +194,7 @@ export function Instellingen() {
 
       <section className="sectie">
         <header><h2>Logboek</h2></header>
+        <Verbruikje />
         <div className="kaart">
           {logboek.laden && <Skelet aantal={2} />}
           {(logboek.data ?? []).map((r) => (
@@ -677,6 +680,108 @@ function TweeStappen() {
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+/*
+ * HOE HET DE NACHTPLOEG VERGAAT
+ *
+ * De 404 op de mailkoppeling stond twintig rondes in de database voordat hij
+ * op een telefoon werd opgemerkt. Dit blokje is het antwoord daarop: het staat
+ * bovenaan Instellingen en het zegt in één regel of alles nog draait.
+ *
+ * pg_cron schrijft bij een geslaagde ronde "1 row" in hetzelfde veld waar bij
+ * een mislukte ronde de fout staat. Dat is hier geen fout en wordt dus alleen
+ * getoond als de laatste ronde ook echt misging.
+ */
+const KLOK: Record<string, string> = {
+  "*/10 * * * *": "elke tien minuten",
+  "5 * * * *": "elk uur",
+  "20 * * * *": "elk uur",
+  "30 4,5 * * 1-5": "elke werkdag om 06.30 uur",
+  "0 5 * * 1": "maandagochtend",
+  "5 4 * * *": "elke nacht",
+  "15 3 * * *": "elke nacht",
+  "30 3 * * *": "elke nacht",
+};
+
+const WERK: Record<string, string> = {
+  "bennaassistent-gmail": "Mail ophalen",
+  "bennaassistent-followup": "Antwoorden nakijken",
+  "bennaassistent-drive": "Drive nakijken",
+  "bennaassistent-brief": "Dagoverzicht maken",
+  "bennaassistent-week": "Weekoverzicht maken",
+  "bennaassistent-terugkerend": "Onderhoud inplannen",
+  "bennaassistent-opruimen": "Oude gegevens wissen",
+  "bennaassistent-hertriage": "Mislukte triage inhalen",
+};
+
+function Nachtploeg() {
+  const stand = useAsync(() => haalGezondheid(), []);
+  const rijen = stand.data ?? [];
+
+  const stuk = rijen.filter((r) => r.mislukt_24u >= 2);
+  const hapert = rijen.filter((r) => r.mislukt_24u === 1);
+  const kleur = stuk.length ? "foutrand" : hapert.length ? "let" : "goedrand";
+
+  const kop = stuk.length
+    ? `${stuk.length === 1 ? "Eén nachtelijke taak faalt" : `${stuk.length} nachtelijke taken falen`} herhaaldelijk`
+    : hapert.length
+      ? "Eén ronde ging mis, de rest loopt"
+      : "Alles draait";
+
+  return (
+    <section className="sectie">
+      <header><h2>Nachtploeg</h2></header>
+      {stand.laden && <Skelet aantal={1} />}
+      {stand.fout && <Fout tekst={stand.fout} opnieuw={stand.herlaad} />}
+      {!stand.laden && !stand.fout && (
+        <div className={`kaart ${kleur}`}>
+          <p className="klein" style={{ marginTop: 0, fontWeight: 600 }}>{kop}</p>
+          {rijen.map((r) => (
+            <div className="brief-regel" key={r.taak}>
+              <span className="groei klein">
+                {WERK[r.taak] ?? r.taak}
+                <div className="mini">
+                  {KLOK[r.rooster] ?? r.rooster}
+                  {r.laatste ? ` · laatst ${relatief(r.laatste)}` : " · nog niet gedraaid"}
+                </div>
+                {/* Alleen tonen als de laatste ronde ook echt misging. */}
+                {r.status && r.status !== "succeeded" && r.fout && (
+                  <div className="mini" style={{ color: "var(--fout)" }}>{r.fout}</div>
+                )}
+              </span>
+              {r.mislukt_24u > 0 && (
+                <Merkje kleur={r.mislukt_24u >= 2 ? "rood" : "amber"}>
+                  {r.mislukt_24u}× mis vandaag
+                </Merkje>
+              )}
+            </div>
+          ))}
+          {rijen.length === 0 && <p className="mini" style={{ margin: 0 }}>Geen taken ingepland.</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* Wat de modellen deze maand kosten, in tokens. Geen euro's: de prijs per
+   token verandert en een verouderd bedrag is misleidender dan geen bedrag. */
+function Verbruikje() {
+  const stand = useAsync(() => haalVerbruik(), []);
+  const rijen = stand.data ?? [];
+  if (!rijen.length) return null;
+  const getal = (n: number) => new Intl.NumberFormat("nl-NL").format(n);
+  return (
+    <div className="kaart plat" style={{ marginBottom: "0.6rem" }}>
+      <p className="mini" style={{ margin: "0 0 0.4rem" }}>Deze maand aan het taalmodel gevraagd:</p>
+      {rijen.map((v) => (
+        <div className="brief-regel" key={v.model}>
+          <span className="groei mini">{v.model}</span>
+          <span className="mini">{v.aanroepen}× · {getal(v.invoer)} in / {getal(v.uitvoer)} uit</span>
+        </div>
+      ))}
     </div>
   );
 }

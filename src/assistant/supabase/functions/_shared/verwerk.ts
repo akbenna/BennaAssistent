@@ -50,10 +50,10 @@ export async function triageEnVoorstel(
   m: ParsedMessage,
   projecten: Projectje[],
 ): Promise<Uitkomst> {
-  const t = await triage(m);
+  const { triage: t, verbruik } = await triage(m);
   await audit(admin, ownerId, "triage", {
     object_type: "gmail", object_id: m.id, model: TRIAGE_MODEL(),
-    details: { categorie: t.categorie },
+    details: { categorie: t.categorie, ...verbruik },
   });
 
   const { error } = await admin.from("items").update({ samenvatting: t.samenvatting }).eq("id", itemId);

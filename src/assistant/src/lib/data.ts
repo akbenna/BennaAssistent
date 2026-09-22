@@ -4,8 +4,8 @@ import type { Ontleding } from "./bricks";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
   DeclaratieImport, DeclaratieMaand,
-  Koppeling, Opvolging, Prioriteit, Project, Sjabloon, TaakRij, TaakStatus,
-  Terugkerend, TerugkerendRij,
+  Gezondheid, Koppeling, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
+  TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
 
 const TAAK_VELDEN = "id,project_id,titel,toelichting,status,prioriteit,deadline,aangemaakt_door,afgerond_op,gearchiveerd_op,created_at,updated_at";
@@ -59,9 +59,27 @@ export async function haalTellingen(): Promise<Tellingen> {
 }
 
 export async function haalDagoverzicht(datum = vandaag()): Promise<Dagoverzicht | null> {
-  const { data, error } = await supabase.from("briefs").select("inhoud").eq("datum", datum).maybeSingle();
+  // Op maandag staan er twee overzichten op dezelfde datum: het dagoverzicht
+  // en het weekoverzicht. Zonder deze filter zou `maybeSingle` daarop stuklopen.
+  const { data, error } = await supabase.from("briefs").select("inhoud")
+    .eq("datum", datum).eq("soort", "dag").maybeSingle();
   if (error) throw new Error(error.message);
   return (data?.inhoud as Dagoverzicht | undefined) ?? null;
+}
+
+/**
+ * Het weekoverzicht van de week waarin `datum` valt. Het wordt op maandag
+ * gemaakt en staat op de maandag; op donderdag kijk je dus nog steeds naar
+ * hetzelfde stuk, en dat is de bedoeling.
+ */
+export async function haalWeekoverzicht(datum = vandaag()): Promise<Weekoverzicht | null> {
+  const d = new Date(`${datum}T12:00:00Z`);
+  const maandag = new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 86400000)
+    .toISOString().slice(0, 10);
+  const { data, error } = await supabase.from("briefs").select("inhoud")
+    .eq("datum", maandag).eq("soort", "week").maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.inhoud as Weekoverzicht | undefined) ?? null;
 }
 
 export async function haalProjecten(metArchief = false): Promise<Project[]> {
@@ -436,4 +454,80 @@ export async function bewaarTerugkerend(t: Partial<Terugkerend> & { id: string }
   const { id, ...rest } = t;
   const { error } = await supabase.from("terugkerend").update(rest).eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+/* --------------------------------------------------------- toezicht ------ */
+
+/** Hoe het de nachtploeg vergaat. Leest `cron.job_run_details` via een functie
+    met definer-rechten; de opdracht zelf komt niet mee terug. */
+export async function haalGezondheid(): Promise<Gezondheid[]> {
+  const { data, error } = await supabase.rpc("cron_gezondheid");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Gezondheid[];
+}
+
+/**
+ * Wat de modellen deze maand hebben gekost, in tokens.
+ *
+ * De aantallen staan in het logboek bij elke aanroep. Optellen gebeurt hier en
+ * niet in de database: het zijn een paar honderd regels per maand, en een
+ * aparte view voor een getal dat je één keer per week bekijkt is overdaad.
+ */
+export async function haalVerbruik(): Promise<Verbruik[]> {
+  const eersteVanDeMaand = `${vandaag().slice(0, 7)}-01T00:00:00Z`;
+  const { data, error } = await supabase
+    .from("audit_log").select("model,details")
+    .not("model", "is", null).gte("created_at", eersteVanDeMaand)
+    .returns<Array<{ model: string; details: Record<string, unknown> }>>();
+  if (error) throw new Error(error.message);
+
+  const per = new Map<string, Verbruik>();
+  for (const r of data ?? []) {
+    const v = per.get(r.model) ?? { model: r.model, aanroepen: 0, invoer: 0, uitvoer: 0 };
+    v.aanroepen++;
+    v.invoer += Number(r.details?.invoer ?? 0);
+    v.uitvoer += Number(r.details?.uitvoer ?? 0);
+    per.set(r.model, v);
+  }
+  return [...per.values()].sort((a, b) => b.aanroepen - a.aanroepen);
+}
+
+/**
+ * Wie is mij nog een antwoord schuldig?
+ *
+ * Dezelfde opvolgingen als op het taakpaneel, maar gesorteerd op persoon in
+ * plaats van op taak. Dat is de vorm die je vóór een vergadering nodig hebt:
+ * niet "welke taak wacht", maar "wat heb ik nog van Van Dijk tegoed".
+ */
+export async function haalSchuldig(): Promise<Schuldig[]> {
+  const { data, error } = await supabase
+    .from("followups").select("task_id,verstuurd_op,tasks(titel)")
+    .is("beantwoord_op", null).order("verstuurd_op")
+    .returns<Array<{ task_id: string; verstuurd_op: string; tasks: { titel: string } | null }>>();
+  if (error) throw new Error(error.message);
+  const rijen = data ?? [];
+  if (!rijen.length) return [];
+
+  const bronnen = await haalBronnenVoorTaken([...new Set(rijen.map((r) => r.task_id))]);
+  const per = new Map<string, Schuldig>();
+
+  for (const r of rijen) {
+    const bron = (bronnen[r.task_id] ?? []).find((i) => !i.uitgesloten && i.afzender);
+    const adres = adresUit(bron?.afzender) ?? "onbekend";
+    const bestaand = per.get(adres);
+    if (bestaand) {
+      bestaand.aantal++;
+      bestaand.taken.push({ id: r.task_id, titel: r.tasks?.titel ?? null });
+    } else {
+      per.set(adres, {
+        adres,
+        naam: bron?.afzender ?? adres,
+        aantal: 1,
+        oudste: r.verstuurd_op,
+        taken: [{ id: r.task_id, titel: r.tasks?.titel ?? null }],
+      });
+    }
+  }
+  // Oudste schuld bovenaan: dat is waar je als eerste achteraan wilt.
+  return [...per.values()].sort((a, b) => a.oudste.localeCompare(b.oudste));
 }

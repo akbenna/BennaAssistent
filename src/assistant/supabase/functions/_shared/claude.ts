@@ -3,7 +3,19 @@ import { env } from "./core.ts";
 export const TRIAGE_MODEL = () => Deno.env.get("CLAUDE_TRIAGE_MODEL") ?? "claude-haiku-4-5-20251001";
 export const WRITE_MODEL = () => Deno.env.get("CLAUDE_WRITE_MODEL") ?? "claude-sonnet-5";
 
-async function call(model: string, system: string, user: string, maxTokens: number): Promise<string> {
+/** Wat een aanroep heeft gekost. Gaat mee het logboek in, zodat de rekening
+    van Anthropic nooit als verrassing komt. */
+export interface Verbruik {
+  invoer: number;
+  uitvoer: number;
+}
+
+export interface Antwoord {
+  tekst: string;
+  verbruik: Verbruik;
+}
+
+async function call(model: string, system: string, user: string, maxTokens: number): Promise<Antwoord> {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -15,7 +27,13 @@ async function call(model: string, system: string, user: string, maxTokens: numb
   });
   const j = await r.json();
   if (!r.ok) throw new Error(`Claude ${r.status}: ${JSON.stringify(j)}`);
-  return (j.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+  return {
+    tekst: (j.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n"),
+    verbruik: {
+      invoer: Number(j.usage?.input_tokens ?? 0),
+      uitvoer: Number(j.usage?.output_tokens ?? 0),
+    },
+  };
 }
 
 export interface Triage {
@@ -33,9 +51,11 @@ Beoordeel één e-mail. Antwoord UITSLUITEND met één JSON-object, zonder uitle
 "actie" alleen als de ontvanger zelf iets moet doen (antwoorden, beslissen, betalen, bellen, tekenen).
 Noem een deadline alleen als die letterlijk in de mail staat. Verzin niets.`;
 
-export async function triage(m: { from: string; subject: string; date: Date; text: string }): Promise<Triage> {
+export async function triage(
+  m: { from: string; subject: string; date: Date; text: string },
+): Promise<{ triage: Triage; verbruik: Verbruik }> {
   const user = `Van: ${m.from}\nDatum: ${m.date.toISOString()}\nOnderwerp: ${m.subject}\n\n${m.text.slice(0, 6000)}`;
-  const out = await call(TRIAGE_MODEL(), TRIAGE_SYSTEM, user, 400);
+  const { tekst: out, verbruik } = await call(TRIAGE_MODEL(), TRIAGE_SYSTEM, user, 400);
   const clean = out.replace(/```json|```/g, "").trim();
   const start = clean.indexOf("{");
   const end = clean.lastIndexOf("}");
@@ -43,14 +63,14 @@ export async function triage(m: { from: string; subject: string; date: Date; tex
   if (!["actie", "info", "wacht_op_ander", "nieuwsbrief"].includes(t.categorie)) t.categorie = "info";
   if (!["laag", "normaal", "hoog"].includes(t.prioriteit)) t.prioriteit = "normaal";
   if (t.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(t.deadline)) t.deadline = null;
-  return t;
+  return { triage: t, verbruik };
 }
 
 export async function schrijfConcept(o: {
   thread: string;
   instructie?: string;
   sjablonen: { naam: string; inhoud: string }[];
-}): Promise<string> {
+}): Promise<Antwoord> {
   const system = `Je schrijft conceptantwoorden namens dr. A. Bennaghmouch, huisarts en praktijkhouder.
 Schrijf in het Nederlands, zakelijk en warm, beknopt, zonder opsommingstekens tenzij nodig.
 Beloof niets wat niet uit de mail of de instructie volgt. Verzin geen feiten, data of bedragen;
@@ -60,7 +80,8 @@ Eindig met: "Met vriendelijke groet,\\n\\nAbdelkader Bennaghmouch".`;
     ? `\n\nSjablonen die mogen worden gebruikt als ze passen:\n${o.sjablonen.map((s) => `### ${s.naam}\n${s.inhoud}`).join("\n\n")}`
     : "";
   const user = `Gesprek (oudste eerst):\n${o.thread.slice(0, 12000)}${sj}\n\nInstructie van de eigenaar: ${o.instructie || "schrijf een passend antwoord op het laatste bericht"}`;
-  return (await call(WRITE_MODEL(), system, user, 1200)).trim();
+  const a = await call(WRITE_MODEL(), system, user, 1200);
+  return { tekst: a.tekst.trim(), verbruik: a.verbruik };
 }
 
 /* ------------------------------------------------------------- meedenken -- */
@@ -111,7 +132,7 @@ export async function denkMee(o: {
   thread?: string;
   concept?: string;
   toon?: string;
-}): Promise<string> {
+}): Promise<Antwoord> {
   const delen = [
     `Taak: ${o.taak.titel}`,
     o.taak.toelichting ? `Toelichting: ${o.taak.toelichting}` : "",
@@ -124,5 +145,6 @@ export async function denkMee(o: {
   // of een herschrijving draagt de stem van de eigenaar en gaat naar het grote.
   const model = o.wijze === "stappen" || o.wijze === "hoeken" ? TRIAGE_MODEL() : WRITE_MODEL();
   const max = o.wijze === "herschrijf" ? 1200 : 700;
-  return (await call(model, OPDRACHT[o.wijze], delen.join("\n"), max)).trim();
+  const a = await call(model, OPDRACHT[o.wijze], delen.join("\n"), max);
+  return { tekst: a.tekst.trim(), verbruik: a.verbruik };
 }
