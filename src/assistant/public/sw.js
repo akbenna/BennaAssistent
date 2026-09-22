@@ -12,6 +12,18 @@
  */
 const CACHE = "benna-assets-v1";
 
+/* Bij elke nieuwe versie krijgen de bestanden een nieuwe hash, dus de oude
+   blijven achter zonder dat iets ze nog opvraagt. Zonder bovengrens groeit de
+   cache dus eeuwig door. Zestig stuks is ruim: één versie van de app is er
+   een stuk of acht. `cache.keys()` geeft ze op volgorde van toevoegen, dus de
+   voorste zijn de oudste. */
+const MAX = 60;
+
+async function snoei(cache) {
+  const sleutels = await cache.keys();
+  for (const oud of sleutels.slice(0, sleutels.length - MAX)) await cache.delete(oud);
+}
+
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
@@ -36,7 +48,9 @@ self.addEventListener("fetch", (e) => {
         // Alleen een volledig, gelukt antwoord is het bewaren waard.
         if (antwoord.ok && antwoord.status === 200) {
           const kopie = antwoord.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, kopie));
+          void caches.open(CACHE)
+            .then((c) => c.put(e.request, kopie).then(() => snoei(c)))
+            .catch(() => { /* geen ruimte of geen toestemming: dan gewoon zonder cache */ });
         }
         return antwoord;
       });
