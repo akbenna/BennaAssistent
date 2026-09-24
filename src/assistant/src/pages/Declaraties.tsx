@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { Fout, Leeg, Merkje, Skelet, Uitleg, useAsync, useMelding } from "../components/ui";
 import { leesBestand } from "../lib/tabel";
-import { ontleed, type Ontleding, type Rapport } from "../lib/bricks";
+import { MaandNodig, ontleed, type Ontleding, type Rapport } from "../lib/bricks";
 import { bewaarDeclaraties, haalDeclaratieImports, haalMaandstaat } from "../lib/data";
 import { relatief } from "../lib/format";
 import type { DeclaratieMaand } from "../types/db";
 
-const RAPPORTNAAM: Record<Rapport, string> = {
-  "05": "Overzicht gedeclareerde prestaties per maand",
-  "09": "Totaal overzicht facturen voor accountant of boekhouding",
-  "25": "Gedetailleerde declaratie per medewerker",
+/* Waar elk rapport vandaan komt. VIPLive is de geldbron, Bricks de
+   registratiebron; wie dat door elkaar haalt gaat in het verkeerde systeem
+   zoeken. De rapportenkalender op het portaal houdt dezelfde indeling aan. */
+const RAPPORT: Record<Rapport, { naam: string; bron: "VIPLive" | "Bricks" }> = {
+  "05": { naam: "Overzicht gedeclareerde prestaties per maand", bron: "VIPLive" },
+  "09": { naam: "Totaal overzicht facturen voor accountant of boekhouding", bron: "VIPLive" },
+  "25": { naam: "Verrichtingen per medewerker", bron: "Bricks" },
 };
 
 const euro = (n: number | null | undefined): string =>
@@ -17,6 +20,14 @@ const euro = (n: number | null | undefined): string =>
 
 const getalNL = (n: number | null | undefined): string =>
   n == null ? "—" : new Intl.NumberFormat("nl-NL").format(n);
+
+/** De vorige maand als YYYY-MM: de maand waar een ronde bijna altijd over gaat. */
+function vorigeMaand(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
 const maandNaam = (datum: string): string =>
   new Intl.DateTimeFormat("nl-NL", { month: "short", year: "2-digit", timeZone: "UTC" })
@@ -30,11 +41,12 @@ export function Declaraties() {
   return (
     <>
       <div className="sectie">
-        <p className="opschrift">Uit Bricks</p>
+        <p className="opschrift">Uit VIPLive en Bricks</p>
         <h1>Declaraties</h1>
         <p className="klein" style={{ marginTop: "0.3rem", marginBottom: 0 }}>
-          Bricks kent geen koppeling om uit te lezen, dus dit loopt via je eigen export. Het bestand
-          wordt in dit tabblad gelezen; alleen de uitkomst gaat naar de database.
+          Rapport 05 en 09 komen uit VIPLive, rapport 25 uit Bricks. Geen van beide heeft een
+          koppeling om uit te lezen, dus dit loopt via je eigen export. Het bestand wordt in dit
+          tabblad gelezen; alleen de uitkomst gaat naar de database.
         </p>
       </div>
 
@@ -48,7 +60,7 @@ export function Declaraties() {
         {maanden.laden && <Skelet aantal={2} />}
         {maanden.fout && <Fout tekst={maanden.fout} opnieuw={maanden.herlaad} />}
         {!maanden.laden && (maanden.data ?? []).length === 0 && (
-          <Leeg teken="·">Nog geen declaratiedata. Sleep hierboven een export uit Bricks naar binnen.</Leeg>
+          <Leeg teken="·">Nog geen declaratiedata. Kies hierboven een export uit VIPLive of Bricks.</Leeg>
         )}
         {(maanden.data ?? []).length > 0 && <Maandstaat rijen={maanden.data ?? []} />}
       </section>
@@ -81,7 +93,7 @@ export function Declaraties() {
 /*
  * EERST LATEN ZIEN, DAN PAS WEGSCHRIJVEN
  *
- * De kolomposities van een Bricks-export liggen niet vast voor de eeuwigheid.
+ * De kolomposities van een export liggen niet vast voor de eeuwigheid.
  * Schuift er iets op, dan komen er getallen in de verkeerde kolom terecht en
  * dat merk je pas maanden later in een analyse. Daarom eerst tonen wat er is
  * herkend — welk rapport, hoeveel regels, welke maanden, wat is overgeslagen —
@@ -93,19 +105,25 @@ function Invoer({ bijKlaar }: { bijKlaar: () => void }) {
   const [bestand, setBestand] = useState<File | null>(null);
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState<string | null>(null);
+  const [maandNodig, setMaandNodig] = useState(false);
+  const [maand, setMaand] = useState(vorigeMaand);
 
-  async function lees(f: File, gedwongen?: Rapport) {
+  async function lees(f: File, gedwongen?: Rapport, maand?: string) {
     setBezig(true);
     setFout(null);
     try {
-      const rooster = await leesBestand(f);
-      setOntleding(ontleed(rooster, gedwongen));
-      setBestand(f);
+      const bladen = await leesBestand(f);
+      setOntleding(ontleed(bladen, { gedwongen, maand }));
+      setMaandNodig(false);
     } catch (e) {
+      // De platte vorm van rapport 25 draagt geen periode. Dat is geen fout in
+      // het bestand maar een vraag aan de gebruiker, en hoort dus ook niet als
+      // foutmelding op het scherm te staan.
+      setMaandNodig(e instanceof MaandNodig);
       setFout(e instanceof Error ? e.message : String(e));
       setOntleding(null);
-      setBestand(f);
     } finally {
+      setBestand(f);
       setBezig(false);
     }
   }
@@ -132,7 +150,7 @@ function Invoer({ bijKlaar }: { bijKlaar: () => void }) {
     <section className="sectie">
       <div className="kaart">
         <label className="veld" style={{ marginBottom: 0 }}>
-          <span>Export uit Bricks (xlsx of csv)</span>
+          <span>Export uit VIPLive of Bricks (xlsx of csv)</span>
           <input type="file" accept=".xlsx,.xlsm,.csv,.tsv,.txt"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void lees(f); }} />
         </label>
@@ -141,8 +159,22 @@ function Invoer({ bijKlaar }: { bijKlaar: () => void }) {
 
         {fout && (
           <>
-            <p className="klein" style={{ color: "var(--fout)", marginTop: "0.8rem" }}>{fout}</p>
-            {bestand && (
+            <p className="klein" style={{ color: maandNodig ? "var(--let)" : "var(--fout)", marginTop: "0.8rem" }}>
+              {fout}
+            </p>
+            {maandNodig && bestand && (
+              <div className="rij" style={{ gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+                <label className="veld" style={{ marginBottom: 0 }}>
+                  <span>Maand van dit bestand</span>
+                  <input type="month" value={maand} onChange={(e) => setMaand(e.target.value)} />
+                </label>
+                <button className="knop primair klein" disabled={!maand}
+                  onClick={() => void lees(bestand, "25", `${maand}-01`)}>
+                  Lees in op deze maand
+                </button>
+              </div>
+            )}
+            {!maandNodig && bestand && (
               <div className="knoprij">
                 {(["05", "09", "25"] as Rapport[]).map((r) => (
                   <button key={r} className="knop klein" onClick={() => void lees(bestand, r)}>
@@ -158,7 +190,8 @@ function Invoer({ bijKlaar }: { bijKlaar: () => void }) {
           <div style={{ marginTop: "0.9rem", borderTop: "1px solid var(--lijn)", paddingTop: "0.8rem" }}>
             <div className="rij" style={{ flexWrap: "wrap", gap: "0.4rem" }}>
               <Merkje kleur="accent">Rapport {ontleding.rapport}</Merkje>
-              <span className="klein">{RAPPORTNAAM[ontleding.rapport]}</span>
+              <Merkje>{RAPPORT[ontleding.rapport].bron}</Merkje>
+              <span className="klein">{RAPPORT[ontleding.rapport].naam}</span>
             </div>
             <p className="klein" style={{ margin: "0.6rem 0 0" }}>
               {ontleding.prestaties.length > 0 && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maakXlsx, RAPPORT_05 } from "../../scripts/maak-proef-xlsx.mjs";
+import { maakWerkboek, maakXlsx, RAPPORT_05 } from "../../scripts/maak-proef-xlsx.mjs";
 import { getal, leesCsv, leesXlsx } from "./tabel";
 
 /* Een File maken uit de bytes die de bouwer teruggeeft; dat is wat de app uit
@@ -63,16 +63,29 @@ describe("getallen", () => {
 
 describe("xlsx", () => {
   it("leest een blad met gedeelde teksten en getallen", async () => {
-    const r = await leesXlsx(alsBestand(maakXlsx(RAPPORT_05)));
-    expect(r[0]?.[0]).toBe("Periode: 01-01-2026 t/m 31-03-2026");
-    expect(r[4]?.[0]).toBe("Verrichtingen januari");
-    expect(r[5]?.[0]).toContain("11115");
-    expect(r[5]?.[7]).toBe("2180");
+    const [blad] = await leesXlsx(alsBestand(maakXlsx(RAPPORT_05)));
+    expect(blad?.rijen[0]?.[0]).toBe("Periode: 01-01-2026 t/m 31-03-2026");
+    expect(blad?.rijen[4]?.[0]).toBe("Verrichtingen januari");
+    expect(blad?.rijen[5]?.[0]).toContain("11115");
+    expect(blad?.rijen[5]?.[7]).toBe("2180");
   });
 
   it("laat lege cellen de kolommen niet verschuiven", async () => {
-    const r = await leesXlsx(alsBestand(maakXlsx([["a", "", "", "d"]])));
-    expect(r[0]).toEqual(["a", "", "", "d"]);
+    const [blad] = await leesXlsx(alsBestand(maakXlsx([["a", "", "", "d"]])));
+    expect(blad?.rijen[0]).toEqual(["a", "", "", "d"]);
+  });
+
+  /* Rapport 25 en 4a zetten elke behandelaar op een eigen tabblad. Werd alleen
+     sheet1 gelezen, dan verdween de rest van de praktijk zonder dat iets het
+     meldde — en dat is erger dan een foutmelding. */
+  it("leest alle tabbladen, met hun namen, in volgorde", async () => {
+    const bestand = maakWerkboek([
+      { naam: "A. Bennaghmouch", rijen: [["Verrichtingen januari"], ["12011 Consult", "", "", "", "", "", "", 600]] },
+      { naam: "J. Waarnemer", rijen: [["Verrichtingen januari"], ["12011 Consult", "", "", "", "", "", "", 280]] },
+    ]);
+    const bladen = await leesXlsx(alsBestand(bestand));
+    expect(bladen.map((b) => b.naam)).toEqual(["A. Bennaghmouch", "J. Waarnemer"]);
+    expect(bladen[1]?.rijen[1]?.[7]).toBe("280");
   });
 
   it("weigert het oude binaire formaat met een leesbare uitleg", async () => {

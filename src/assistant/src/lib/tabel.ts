@@ -10,7 +10,7 @@
  * Wat hier staat is dus met de hand geschreven, in dezelfde geest als de
  * PNG-encoder in `scripts/make-icons.mjs`. Het kan minder dan SheetJS — geen
  * formules, geen opmaak, geen datumtypen — en dat is precies genoeg: een
- * Bricks-export is een rooster met tekst en getallen.
+ * export uit Bricks of VIPLive is een rooster met tekst en getallen.
  *
  * DE BROWSER DOET HET ZWARE WERK
  *
@@ -21,6 +21,13 @@
  */
 
 export type Rooster = string[][];
+
+/**
+ * Een werkboek is één of meer bladen. Dat onderscheid is niet cosmetisch:
+ * rapport 25 en 4a zetten elke behandelaar op een eigen tabblad. Wie alleen het
+ * eerste blad leest krijgt één arts te zien en merkt dat nergens aan.
+ */
+export interface Blad { naam: string; rijen: Rooster }
 
 /* ----------------------------------------------------------------- csv ---- */
 
@@ -126,16 +133,19 @@ function kolomUitVerwijzing(ref: string): number {
   return n - 1;
 }
 
-export async function leesXlsx(bestand: File): Promise<Rooster> {
+export async function leesXlsx(bestand: File): Promise<Blad[]> {
   const buf = new Uint8Array(await bestand.arrayBuffer());
   const inhoud = zipInhoud(buf);
   const vind = (naam: string) => inhoud.find((r) => r.naam === naam);
 
-  // Het eerste werkblad. De volgorde in workbook.xml is de juiste, maar
-  // sheet1.xml is in elke export die Bricks maakt het eerste blad.
-  const blad = vind("xl/worksheets/sheet1.xml")
-    ?? inhoud.find((r) => r.naam.startsWith("xl/worksheets/") && r.naam.endsWith(".xml"));
-  if (!blad) throw new Error("Geen werkblad gevonden in het xlsx-bestand.");
+  // Alle werkbladen, op nummer gesorteerd. Dat is niet met zekerheid de
+  // volgorde uit workbook.xml — daarvoor zou de relatietabel erbij moeten —
+  // maar wel de volgorde waarin Bricks en VIPLive ze wegschrijven, en voor het
+  // doel hier (elk blad apart ontleden) telt alleen dat er geen blad wegvalt.
+  const bladen = inhoud
+    .filter((r) => /^xl\/worksheets\/sheet\d+\.xml$/.test(r.naam))
+    .sort((a, b) => Number(a.naam.match(/\d+/)![0]) - Number(b.naam.match(/\d+/)![0]));
+  if (!bladen.length) throw new Error("Geen werkblad gevonden in het xlsx-bestand.");
 
   const ontleder = new DOMParser();
 
@@ -150,45 +160,57 @@ export async function leesXlsx(bestand: File): Promise<Rooster> {
     );
   }
 
-  const doc = ontleder.parseFromString(await pakUit(buf, blad), "application/xml");
-  const rijen: Rooster = [];
-
-  for (const rij of Array.from(doc.getElementsByTagName("row"))) {
-    const regel: string[] = [];
-    for (const cel of Array.from(rij.getElementsByTagName("c"))) {
-      const kolom = kolomUitVerwijzing(cel.getAttribute("r") ?? "");
-      const soort = cel.getAttribute("t");
-      let waarde = "";
-      if (soort === "s") {
-        const i = Number(cel.getElementsByTagName("v")[0]?.textContent ?? "-1");
-        waarde = gedeeld[i] ?? "";
-      } else if (soort === "inlineStr") {
-        waarde = Array.from(cel.getElementsByTagName("t")).map((t) => t.textContent ?? "").join("");
-      } else {
-        waarde = cel.getElementsByTagName("v")[0]?.textContent ?? "";
-      }
-      // Lege cellen worden in xlsx weggelaten; het rooster moet ze wel hebben,
-      // anders schuiven de kolommen op zodra er ergens niets staat.
-      while (regel.length < kolom) regel.push("");
-      regel[kolom] = waarde;
-    }
-    rijen.push(regel);
+  // De namen van de tabbladen staan in workbook.xml, in dezelfde volgorde.
+  let namen: string[] = [];
+  const wb = vind("xl/workbook.xml");
+  if (wb) {
+    const doc = ontleder.parseFromString(await pakUit(buf, wb), "application/xml");
+    namen = Array.from(doc.getElementsByTagName("sheet")).map((n) => n.getAttribute("name") ?? "");
   }
-  return rijen;
+
+  const uit: Blad[] = [];
+  for (const [i, blad] of bladen.entries()) {
+    const doc = ontleder.parseFromString(await pakUit(buf, blad), "application/xml");
+    const rijen: Rooster = [];
+
+    for (const rij of Array.from(doc.getElementsByTagName("row"))) {
+      const regel: string[] = [];
+      for (const cel of Array.from(rij.getElementsByTagName("c"))) {
+        const kolom = kolomUitVerwijzing(cel.getAttribute("r") ?? "");
+        const soort = cel.getAttribute("t");
+        let waarde = "";
+        if (soort === "s") {
+          const n = Number(cel.getElementsByTagName("v")[0]?.textContent ?? "-1");
+          waarde = gedeeld[n] ?? "";
+        } else if (soort === "inlineStr") {
+          waarde = Array.from(cel.getElementsByTagName("t")).map((t) => t.textContent ?? "").join("");
+        } else {
+          waarde = cel.getElementsByTagName("v")[0]?.textContent ?? "";
+        }
+        // Lege cellen worden in xlsx weggelaten; het rooster moet ze wel hebben,
+        // anders schuiven de kolommen op zodra er ergens niets staat.
+        while (regel.length < kolom) regel.push("");
+        regel[kolom] = waarde;
+      }
+      rijen.push(regel);
+    }
+    uit.push({ naam: namen[i] ?? `Blad ${i + 1}`, rijen });
+  }
+  return uit;
 }
 
 /* --------------------------------------------------------------- ingang --- */
 
-export async function leesBestand(bestand: File): Promise<Rooster> {
+export async function leesBestand(bestand: File): Promise<Blad[]> {
   const naam = bestand.name.toLowerCase();
   if (naam.endsWith(".xlsx") || naam.endsWith(".xlsm")) return leesXlsx(bestand);
   if (naam.endsWith(".csv") || naam.endsWith(".txt") || naam.endsWith(".tsv")) {
-    return leesCsv(await bestand.text());
+    return [{ naam: bestand.name, rijen: leesCsv(await bestand.text()) }];
   }
   if (naam.endsWith(".xls")) {
     // Het oude binaire formaat is iets heel anders dan xlsx en niet de moeite
-    // waard om na te bouwen; Bricks kan ook als xlsx of csv wegschrijven.
-    throw new Error("Het oude .xls-formaat kan ik niet lezen. Kies in Bricks voor xlsx of csv.");
+    // waard om na te bouwen; beide systemen kunnen ook xlsx of csv wegschrijven.
+    throw new Error("Het oude .xls-formaat kan ik niet lezen. Kies bij het exporteren voor xlsx of csv.");
   }
   throw new Error(`Onbekend bestandstype: ${bestand.name}`);
 }

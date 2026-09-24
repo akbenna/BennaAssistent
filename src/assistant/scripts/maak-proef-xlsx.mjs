@@ -67,13 +67,44 @@ export function blad(rijen) {
   };
 }
 
-/** Een rooster omzetten naar een compleet xlsx-bestand. */
+/** Een rooster omzetten naar een compleet xlsx-bestand met één tabblad. */
 export function maakXlsx(rijen) {
-  const b = blad(rijen);
+  return maakWerkboek([{ naam: "Blad1", rijen }]);
+}
+
+/**
+ * Meerdere tabbladen in één bestand, met één gedeelde tekstenlijst en een
+ * workbook.xml dat de namen draagt. Rapport 25 en 4a komen zo uit Bricks: elke
+ * behandelaar op een eigen blad.
+ */
+export function maakWerkboek(bladen) {
+  const gedeeld = [], index = new Map();
+  const deel = (s) => { if (!index.has(s)) { index.set(s, gedeeld.length); gedeeld.push(s); } return index.get(s); };
+  const letters = (n) => { let s = ""; n++; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+  const ontsnap = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+  const vellen = bladen.map(({ rijen }) => {
+    const xml = rijen.map((rij, r) => {
+      const cellen = rij.map((waarde, c) => {
+        if (waarde === "" || waarde == null) return "";
+        const ref = `${letters(c)}${r + 1}`;
+        if (typeof waarde === "number") return `<c r="${ref}"><v>${waarde}</v></c>`;
+        return `<c r="${ref}" t="s"><v>${deel(String(waarde))}</v></c>`;
+      }).join("");
+      return `<row r="${r + 1}">${cellen}</row>`;
+    }).join("");
+    return `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${xml}</sheetData></worksheet>`;
+  });
+
+  const workbook = `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets>`
+    + bladen.map((b, i) => `<sheet name="${ontsnap(b.naam)}" sheetId="${i + 1}"/>`).join("")
+    + `</sheets></workbook>`;
+
   return zip([
     { naam: "[Content_Types].xml", inhoud: `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>` },
-    { naam: "xl/sharedStrings.xml", inhoud: b.shared },
-    { naam: "xl/worksheets/sheet1.xml", inhoud: b.sheet },
+    { naam: "xl/workbook.xml", inhoud: workbook },
+    { naam: "xl/sharedStrings.xml", inhoud: `<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${gedeeld.length}" uniqueCount="${gedeeld.length}">${gedeeld.map((t) => `<si><t>${ontsnap(t)}</t></si>`).join("")}</sst>` },
+    ...vellen.map((sheet, i) => ({ naam: `xl/worksheets/sheet${i + 1}.xml`, inhoud: sheet })),
   ]);
 }
 
