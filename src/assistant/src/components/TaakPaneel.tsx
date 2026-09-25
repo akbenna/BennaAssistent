@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Fout, Icoon, Leeg, Merkje, Skelet, Uitleg, useAsync, useMelding } from "./ui";
 import { PRIORITEIT_TEKST, STATUS_TEKST } from "./TaakKaart";
-import { afzenderNaam, datumKort, datumLang, relatief } from "../lib/format";
+import { afzenderNaam, datumKort, datumLang, linksUit, relatief } from "../lib/format";
 import { roepFunctie } from "../lib/supabase";
 import {
   haalBronnenVanTaak, haalConcepten, haalNotities, haalOpvolging, haalProjecten, haalTaak,
@@ -185,6 +185,13 @@ export function TaakPaneel({ taakId, bijSluiten, bijWijziging }: Props) {
                 <textarea defaultValue={taak.toelichting ?? ""} key={`o-${taak.updated_at}`} style={{ minHeight: 90 }}
                   onBlur={(e) => { const v = e.target.value.trim(); if (v !== (taak.toelichting ?? "")) void wijzig({ toelichting: v || null }); }} />
               </label>
+              {linksUit(taak.toelichting).length > 0 && (
+                <div className="mini" style={{ margin: "-0.4rem 0 0.9rem", display: "flex", flexWrap: "wrap", gap: "0.35rem 0.9rem" }}>
+                  {linksUit(taak.toelichting).map((l) => (
+                    <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" title={l.url}>{l.label} ↗</a>
+                  ))}
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.6rem" }}>
                 <label className="veld" style={{ marginBottom: 0 }}>
                   <span>Status</span>
