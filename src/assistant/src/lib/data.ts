@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { vandaag } from "./format";
+import { metActueleDeadlines, weekVan } from "./week";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
   Gezondheid, Koppeling, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
@@ -71,13 +72,17 @@ export async function haalDagoverzicht(datum = vandaag()): Promise<Dagoverzicht 
  * hetzelfde stuk, en dat is de bedoeling.
  */
 export async function haalWeekoverzicht(datum = vandaag()): Promise<Weekoverzicht | null> {
-  const d = new Date(`${datum}T12:00:00Z`);
-  const maandag = new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 86400000)
-    .toISOString().slice(0, 10);
-  const { data, error } = await supabase.from("briefs").select("inhoud")
-    .eq("datum", maandag).eq("soort", "week").maybeSingle();
-  if (error) throw new Error(error.message);
-  return (data?.inhoud as Weekoverzicht | undefined) ?? null;
+  const week = weekVan(datum);
+  const [opname, taken] = await Promise.all([
+    supabase.from("briefs").select("inhoud")
+      .eq("datum", week.maandag).eq("soort", "week").maybeSingle(),
+    supabase.from("tasks").select("id,titel,deadline,prioriteit,status")
+      .is("gearchiveerd_op", null).in("status", ["open", "antwoord_binnen"])
+      .gte("deadline", week.maandag).lte("deadline", week.zondag).order("deadline"),
+  ]);
+  if (opname.error) throw new Error(opname.error.message);
+  if (taken.error) throw new Error(taken.error.message);
+  return metActueleDeadlines((opname.data?.inhoud as Weekoverzicht | undefined) ?? null, week, taken.data ?? []);
 }
 
 export async function haalProjecten(metArchief = false): Promise<Project[]> {

@@ -129,7 +129,8 @@ export interface Dagoverzicht {
   opvolging_verlopen?: Array<{ task_id: string; titel: string | null; sinds: string }>;
 }
 
-/** Wat er deze week aankomt. Wordt op maandag gemaakt en blijft de week staan. */
+/** Wat er deze week aankomt. Wordt op maandag gemaakt en blijft de week staan;
+    alleen de deadlines worden bij het tonen uit de actuele taken gehaald. */
 export interface Weekoverzicht {
   maandag: string;
   zondag: string;

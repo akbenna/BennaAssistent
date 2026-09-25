@@ -40,7 +40,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
       {
         kop: "Deze week",
         tekst: [
-          "Op maandagochtend maakt de assistent een weekoverzicht, en dat blijft de hele week staan. Het toont de deadlines van deze week, welk terugkerend onderhoud verschijnt, op hoeveel verstuurde mails nog geen antwoord kwam, en welke projecten veertien dagen niets van zich lieten horen.",
+          "Op maandagochtend maakt de assistent een weekoverzicht, en dat blijft de hele week staan. Het toont de deadlines van deze week, welk terugkerend onderhoud verschijnt, op hoeveel verstuurde mails nog geen antwoord kwam, en welke projecten veertien dagen niets van zich lieten horen. De deadlines zijn altijd die van nu: wat je afrondt verdwijnt, wat er in de loop van de week bijkomt verschijnt.",
           "Dat laatste is waarvoor het blok bestaat. Een dossier dat stilvalt merk je nergens aan — er gebeurt immers niets. Eén keer per week zien dat het er nog is, is genoeg om te beslissen of dat erg is.",
         ],
       },
