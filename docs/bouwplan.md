@@ -95,7 +95,9 @@ Vastleggen in `docs/beheer.md` en in het verwerkingsregister van de praktijk.
   de scratchmap van de audit-sessie (kopieer dat script naar `scripts/`),
   lege cellen die kolommen niet mogen verschuiven, gedeelde tekst, inlineStr.
 - `src/lib/bricks.test.ts`: rapport 05 met twee maandblokken en jaarwissel,
-  rapport 09 drie blokken, Excel-serieel datum.
+  rapport 09 drie blokken, Excel-serieel datum, beide vormen van rapport 25
+  (blokken per behandelaar over meerdere tabbladen, en de platte tabel die om
+  een maand vraagt).
 - SQL-test in de Action: `select plan_terugkerend('2026-10-03')` op een
   testdatabase (`supabase start`) moet de zaterdag naar maandag schuiven.
 
@@ -144,7 +146,7 @@ Instellingen → Logboek: maandtotaal tokens per model, bovenaan.
 Pagina-onderdeel op Taken, tab "Wacht op antwoord": groeperen op het
 e-mailadres uit de gekoppelde bron, oudste eerst, met dagen wachtend.
 
-### 3.5 Bricks-export via mail — DENKWERK NOG NODIG
+### 3.5 Rapportexport via mail — DENKWERK NOG NODIG
 Open vragen: bijlagen ophalen vergt `attachments.get`; de bijlage gaat door
 `leesBestand` (browsercode) — die moet naar Deno of het bestand moet
 onverwerkt in Storage en de app verwerkt hem bij openen. En het
@@ -183,8 +185,53 @@ is. De tekst staat in `src/lib/handleiding.ts`; een toets bewaakt dat elke
 route een hoofdstuk heeft en andersom, zodat een nieuwe pagina niet stilletjes
 zonder uitleg kan blijven.
 
+**De rapportenronde gelijkgetrokken met het portaal.** Het Roosendael-portaal
+legde in september 2026 zijn rapportenkalender vast op de echte exports, en
+daarmee viel een aanname om die hier nog overal stond: rapport 05 en 09 komen
+uit VIPLive, niet uit Bricks, en alleen rapport 25 komt uit Bricks. VIPLive is
+de geldbron, Bricks de registratiebron. Een taak die het verkeerde systeem
+noemt stuurt je in het verkeerde portaal op zoek, dus zijn de terugkerende
+taken, de teksten op het declaratiescherm en de handleiding meegegaan. Het
+ritme is er ook op herzien: 05 en 25 maandelijks, 23 en de betaalspecificatie
+ketenzorg per kwartaal, en 09 nog maar één keer per jaar — die laatste heeft
+lege kolommen Betaald en Afgeboekt zolang er niet in VIPLive wordt afgeboekt,
+en wat er dan overblijft beweegt traag.
+
+**De lezer klopte niet met de echte export.** Bij dat gelijktrekken bleek dat
+rapport 25 er anders uitziet dan hier werd aangenomen. Bricks levert hem in
+twee vormen: maandblokken per behandelaar, met elke arts op een eigen tabblad,
+of één platte tabel met Gebruikersnaam, code, Aantal en Bedrag. Van de eerste
+werd alleen het eerste tabblad gelezen, dus verdween de rest van de praktijk
+zonder melding; de tweede werd helemaal niet herkend. En de behandelaarregel
+werd gezocht als "Medewerker:" terwijl er "Verrichtingen behandelaar" staat —
+die regels kwamen dus zonder naam binnen, en een 25-regel zonder naam telt in
+de maandstaat mee alsof hij uit rapport 05 kwam. Dat is dubbeltellen zonder
+dat iets het zegt, en daarom weigert de app zo'n bestand nu. De xlsx-lezer
+leest alle tabbladen, de kolommen worden op de koprij gezocht in plaats van op
+vaste posities, en de platte vorm vraagt om een maand omdat het bestand er
+zelf geen draagt.
+
+**Een proefronde die bleef staan.** Het beproeven van `plan_terugkerend` met
+toekomstige datums had `laatst_gepland` op 15 januari 2027 gezet en vijfentwintig
+taken vooruitgeplant. Omdat de planner alles overslaat wat al gepland heet, lag
+de hele terugkerende planning daarmee stil tot die dag. De datums zijn
+teruggezet en de proeftaken zijn opgeruimd, met een nauwe zeef: alleen open
+taken van de assistent, van de dag van de proef, met een titel die letterlijk
+uit `terugkerend` komt, en zonder notitie, koppeling of concept eraan.
+
+**Het portaal leest de rapporten in, deze app niet meer.** Rapport 05 en 25
+gingen twee keer ergens in: op het portaal bij Import én hier bij Declaraties.
+Dat is dubbel werk in een ronde waarvan het portaal zelf zegt dat twee
+bestanden per maand het maximum is, en een tweede maandstaat die niemand meer
+vult, laat na een paar maanden verouderde cijfers zien alsof ze actueel zijn.
+De praktijkhouder koos het portaal. Het scherm Declaraties, de xlsx-lezer en
+de rapportlezer zijn weg, de lege tabellen erachter ook; de terugkerende taken
+wijzen nu naar de praktijkanalyse, tabblad Import. Er was nooit iets
+ingelezen, dus er is niets verloren. De migratie controleert dat en stopt als
+er toch data staat.
+
 ## Wat met opzet is blijven liggen
 
-3.5 (Bricks-export via mail) en 3.6 (portaalstatus in de cockpit) vergen eerst
+3.5 (rapportexport via mail) en 3.6 (portaalstatus in de cockpit) vergen eerst
 denkwerk dat nog niet is gedaan — zie de beschrijvingen hierboven. Niet bouwen
 voordat dat rond is.

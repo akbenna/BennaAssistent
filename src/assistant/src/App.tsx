@@ -11,11 +11,9 @@ import { Voorstellen } from "./pages/Voorstellen";
 import { Taken } from "./pages/Taken";
 
 /* Vandaag, Voorstellen en Taken zijn de dagelijkse route; die laden meteen.
-   De rest komt pas als je erheen gaat. Dat scheelt vooral bij Declaraties:
-   daar hangt de hele xlsx-lezer aan, en die heb je één keer per maand nodig. */
+   De rest komt pas als je erheen gaat. */
 const Projecten = lazy(() => import("./pages/Projecten").then((m) => ({ default: m.Projecten })));
 const Instellingen = lazy(() => import("./pages/Instellingen").then((m) => ({ default: m.Instellingen })));
-const Declaraties = lazy(() => import("./pages/Declaraties").then((m) => ({ default: m.Declaraties })));
 const Delen = lazy(() => import("./pages/Delen").then((m) => ({ default: m.Delen })));
 
 export default function App() {
@@ -43,7 +41,6 @@ export default function App() {
             <Route path="/voorstellen" element={<Voorstellen />} />
             <Route path="/taken" element={<Taken />} />
             <Route path="/projecten" element={<Projecten />} />
-            <Route path="/declaraties" element={<Declaraties />} />
             <Route path="/instellingen" element={<Instellingen />} />
             <Route path="/delen" element={<Delen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -114,7 +111,6 @@ function Navigatie() {
       {link("/voorstellen", "Voorstellen", Icoon.inbox({}), tellingen?.voorstellen)}
       {link("/taken", "Taken", Icoon.taken({}))}
       {link("/projecten", "Projecten", Icoon.projecten({}))}
-      {link("/declaraties", "Declaraties", Icoon.grafiek({}))}
       {link("/instellingen", "Instellingen", Icoon.instellingen({}))}
     </nav>
   );

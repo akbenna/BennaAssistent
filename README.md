@@ -11,7 +11,8 @@ en stelt taken voor waar iets van je gevraagd wordt. Jij beslist wat op je
 lijst komt. Bij een taak kan hij een concept schrijven, met je meedenken over
 de aanpak, en na het versturen bijhouden of er antwoord komt. Daarnaast houdt
 hij het terugkerende onderhoud van het praktijkportaal bij en zet het op tijd
-op je lijst, en leest hij de declaratiedata uit Bricks in tot een maandstaat.
+op je lijst — ook de rapportenronde uit VIPLive en Bricks, die op het portaal
+wordt ingelezen.
 
 ## Wat het met opzet níét doet
 
