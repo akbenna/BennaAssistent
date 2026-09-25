@@ -79,3 +79,35 @@ export function knip(tekst: string | null | undefined, lengte = 160): string {
   if (!tekst) return "";
   return tekst.length > lengte ? `${tekst.slice(0, lengte - 1).trimEnd()}…` : tekst;
 }
+
+/**
+ * De webadressen in een vrije tekst, zonder dubbelen en zonder de leesteken
+ * die er in een zin achter kunnen staan. Een toelichting is een tekstveld, en
+ * daarin is een adres niet aan te klikken; zo kan het er toch onder staan.
+ */
+export function linksUit(tekst: string | null | undefined): Array<{ url: string; label: string }> {
+  if (!tekst) return [];
+  const gezien = new Set<string>();
+  const uit: Array<{ url: string; label: string }> = [];
+  for (const ruw of tekst.match(/https?:\/\/[^\s<>"']+/g) ?? []) {
+    const url = ruw.replace(/[.,;:!?)\]]+$/, "");
+    if (gezien.has(url)) continue;
+    let adres: URL;
+    try { adres = new URL(url); } catch { continue; }
+    gezien.add(url);
+    uit.push({ url, label: linkLabel(adres) });
+  }
+  return uit;
+}
+
+function linkLabel(adres: URL): string {
+  const host = adres.hostname.replace(/^www\./, "");
+  if (host === "docs.google.com") {
+    if (adres.pathname.startsWith("/document/")) return "Google-document";
+    if (adres.pathname.startsWith("/spreadsheets/")) return "Google-spreadsheet";
+  }
+  if (host === "claude.ai") return "Pagina in Claude";
+  const pad = adres.pathname.replace(/\/+$/, "");
+  const kort = pad.length > 32 ? `${pad.slice(0, 31)}…` : pad;
+  return host + kort;
+}
