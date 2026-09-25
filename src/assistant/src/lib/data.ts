@@ -1,9 +1,7 @@
 import { supabase } from "./supabase";
 import { vandaag } from "./format";
-import type { Ontleding } from "./bricks";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
-  DeclaratieImport, DeclaratieMaand,
   Gezondheid, Koppeling, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
   TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
@@ -334,86 +332,6 @@ export async function haalBronnenVoorTaken(taakIds: string[]): Promise<Record<st
   return uit;
 }
 
-/* ---------------------------------------------------- declaratiedata ----- */
-
-/**
- * Een ontleed Bricks-rapport wegschrijven.
- *
- * Opnieuw importeren van dezelfde maand overschrijft: de bestaande regels voor
- * die maanden gaan er eerst uit. Dat is met opzet, want een export wordt vaak
- * een tweede keer gemaakt nadat er is nagedeclareerd, en twee halve waarheden
- * naast elkaar zijn erger dan één bijgewerkte.
- */
-export async function bewaarDeclaraties(
-  o: Ontleding,
-  bestandsnaam: string,
-): Promise<{ import_id: string; weggeschreven: number }> {
-  const { data: imp, error: impFout } = await supabase
-    .from("declaratie_import")
-    .insert({
-      rapport: o.rapport,
-      bestandsnaam,
-      praktijknummer: o.praktijknummer,
-      periode: o.periode,
-      stand_database: o.standDatabase,
-      aantal_regels: o.prestaties.length + o.facturen.length,
-    })
-    .select("id").single();
-  if (impFout) throw new Error(impFout.message);
-  const importId = (imp as { id: string }).id;
-
-  if (o.prestaties.length) {
-    const maanden = [...new Set(o.prestaties.map((p) => p.maand))];
-    // Rapport 05 en 25 wonen in dezelfde tabel; `medewerker` scheidt ze. Een
-    // herimport van het ene mag het andere niet wissen.
-    let wis = supabase.from("declaratie_prestatie").delete().in("maand", maanden);
-    wis = o.rapport === "25" ? wis.not("medewerker", "is", null) : wis.is("medewerker", null);
-    const { error } = await wis;
-    if (error) throw new Error(error.message);
-
-    for (const brok of inStukken(o.prestaties, 500)) {
-      const { error: e } = await supabase.from("declaratie_prestatie")
-        .insert(brok.map((p) => ({ ...p, import_id: importId })));
-      if (e) throw new Error(e.message);
-    }
-  }
-
-  if (o.facturen.length) {
-    const nummers = [...new Set(o.facturen.map((f) => f.factuurnummer))];
-    for (const brok of inStukken(nummers, 300)) {
-      const { error } = await supabase.from("declaratie_factuur").delete().in("factuurnummer", brok);
-      if (error) throw new Error(error.message);
-    }
-    for (const brok of inStukken(o.facturen, 500)) {
-      const { error: e } = await supabase.from("declaratie_factuur")
-        .insert(brok.map((f) => ({ ...f, import_id: importId })));
-      if (e) throw new Error(e.message);
-    }
-  }
-
-  return { import_id: importId, weggeschreven: o.prestaties.length + o.facturen.length };
-}
-
-/** PostgREST slikt geen duizenden rijen in één keer; vandaar deze hapjes. */
-function inStukken<T>(rijen: T[], maat: number): T[][] {
-  const uit: T[][] = [];
-  for (let i = 0; i < rijen.length; i += maat) uit.push(rijen.slice(i, i + maat));
-  return uit;
-}
-
-export async function haalMaandstaat(): Promise<DeclaratieMaand[]> {
-  return controleer(
-    await supabase.from("declaratie_maand").select("*").order("maand").returns<DeclaratieMaand[]>(),
-  );
-}
-
-export async function haalDeclaratieImports(): Promise<DeclaratieImport[]> {
-  return controleer(
-    await supabase.from("declaratie_import")
-      .select("id,rapport,bestandsnaam,praktijknummer,periode,stand_database,aantal_regels,created_at")
-      .order("created_at", { ascending: false }).limit(20).returns<DeclaratieImport[]>(),
-  );
-}
 
 /* ------------------------------------------------------- cockpit --------- */
 

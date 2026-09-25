@@ -54,7 +54,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
       {
         kop: "Doorsteek",
         tekst: [
-          "De tegels naar je andere apps: de beheerpagina's van het praktijkportaal, ProVita Care, en de declaratiepagina hier. Eén blik, één klik naar de juiste plek in plaats van zoeken in je bladwijzers.",
+          "De tegels naar je andere apps: de beheerpagina's van het praktijkportaal en ProVita Care. Eén blik, één klik naar de juiste plek in plaats van zoeken in je bladwijzers.",
           "Je beheert ze zelf onder Instellingen → Doorsteek. Een adres dat met één schuine streep begint is een pagina binnen deze app en opent hier; de rest opent in een nieuw tabblad.",
         ],
       },
@@ -136,47 +136,6 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         kop: "Archiveren",
         tekst: [
           "Een gearchiveerd project blijft bestaan met zijn taken eraan, maar vangt geen nieuwe voorstellen meer en staat niet meer in de keuzelijsten. Voor een dossier dat afgerond is maar waarvan je de geschiedenis wilt houden.",
-        ],
-      },
-    ],
-  },
-  {
-    pad: "/declaraties",
-    titel: "Declaraties",
-    kern: "De maandstaat van de praktijk, uit de exports van VIPLive en Bricks.",
-    delen: [
-      {
-        kop: "Twee systemen, drie rapporten",
-        tekst: [
-          "VIPLive (Calculus) is de geldbron: daar staat wat er is ingediend, goedgekeurd en betaald. Bricks/TetraHIS is de registratiebron: daar staat wat de praktijk heeft vastgelegd. Rapport 05 en 09 komen dus uit VIPLive, rapport 25 uit Bricks. Wie dat door elkaar haalt, zoekt in het verkeerde systeem.",
-          "Rapport 05 (prestatiebasis) levert de maandstaat: aantallen en bedragen per verrichtingcode per maand. Rapport 09 (factuurbasis) levert de facturen in drie blokken — vóór, in en na de periode — die nooit bij elkaar opgeteld mogen worden en daarom apart worden bewaard. Rapport 25 geeft dezelfde verrichtingen per medewerker, maar is registratie en geen inkomsten: die regels moeten nog door de goedkeuring van VIPLive heen, en daar valt een deel af.",
-          "Je hoeft niet te zeggen welk rapport je uploadt: de app herkent het aan de inhoud, want de bestandsnaam is niet te vertrouwen. Je ziet eerst wat eruit gerold is en pas daarna bewaar je het.",
-        ],
-      },
-      {
-        kop: "Rapport 25 vraagt om een maand",
-        tekst: [
-          "Bricks levert dit rapport in twee gedaanten. De ene heeft maandblokken per behandelaar, vaak met elke arts op een eigen tabblad; die worden allemaal gelezen. De andere is één platte tabel met Gebruikersnaam, code, Aantal en Bedrag, en die draagt nergens een periode — niet in de kop en niet in de bestandsnaam. Dan vraagt het scherm om de maand in plaats van er een te verzinnen, want een gok belandt stilletjes in de verkeerde maand.",
-          "Draai dit rapport daarom per kalendermaand: Datum vanaf de eerste en Datum tot en met de laatste dag van die maand, één bestand per maand.",
-        ],
-      },
-      {
-        kop: "Wat de maandstaat telt",
-        tekst: [
-          "Ingeschreven patiënten zijn de codes 11115 tot en met 11118 bij elkaar. Code 11119 — de opslag voor verzekerden in een achterstandswijk — telt daar met opzet niet in mee: dat is een toeslag op bestaande inschrijvingen en geen aparte patiënt. Hij staat er los bij, als eigen kolom.",
-          "Die regel staat in de database en niet in de app, zodat geen enkele latere query eromheen kan rekenen. Rijen uit rapport 25 worden overgeslagen bij het optellen, anders zou elke verrichting dubbel tellen naast rapport 05. Daarom weigert de app een rapport 25 waarin geen enkele behandelaar te vinden is: zulke regels zouden zich voordoen als rapport 05.",
-        ],
-      },
-      {
-        kop: "De waarschuwing",
-        tekst: [
-          "Springt het aandeel lange consulten in één maand met tien procentpunt of meer, dan verschijnt daar een amberkleurige melding bij. Dat is geen oordeel maar een vraag: is er echt anders gewerkt, of is er anders geregistreerd? Beide zijn mogelijk en beide zijn het waard om te weten.",
-        ],
-      },
-      {
-        kop: "Opnieuw uploaden",
-        tekst: [
-          "Dezelfde maand nog eens importeren overschrijft de oude regels. Dat is met opzet: een export wordt vaak een tweede keer gemaakt nadat er is nagedeclareerd, en twee halve waarheden naast elkaar zijn erger dan één bijgewerkte.",
         ],
       },
     ],

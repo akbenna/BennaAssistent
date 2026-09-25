@@ -489,7 +489,7 @@ function Doorsteek({ koppelingen, bijWijziging }: { koppelingen: Koppeling[]; bi
 
       <form className="rij koppelvorm" onSubmit={(e) => void voegToe(e)}>
         <input value={naam} onChange={(e) => setNaam(e.target.value)} placeholder="Naam" required />
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… of /declaraties" required />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… of /taken" required />
         <input value={omschrijving} onChange={(e) => setOmschrijving(e.target.value)} placeholder="Waar is het voor?" />
         <input value={groep} onChange={(e) => setGroep(e.target.value)} placeholder="Groep" list="cockpitgroepen" />
         <datalist id="cockpitgroepen">

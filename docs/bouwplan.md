@@ -219,6 +219,17 @@ teruggezet en de proeftaken zijn opgeruimd, met een nauwe zeef: alleen open
 taken van de assistent, van de dag van de proef, met een titel die letterlijk
 uit `terugkerend` komt, en zonder notitie, koppeling of concept eraan.
 
+**Het portaal leest de rapporten in, deze app niet meer.** Rapport 05 en 25
+gingen twee keer ergens in: op het portaal bij Import én hier bij Declaraties.
+Dat is dubbel werk in een ronde waarvan het portaal zelf zegt dat twee
+bestanden per maand het maximum is, en een tweede maandstaat die niemand meer
+vult, laat na een paar maanden verouderde cijfers zien alsof ze actueel zijn.
+De praktijkhouder koos het portaal. Het scherm Declaraties, de xlsx-lezer en
+de rapportlezer zijn weg, de lege tabellen erachter ook; de terugkerende taken
+wijzen nu naar de praktijkanalyse, tabblad Import. Er was nooit iets
+ingelezen, dus er is niets verloren. De migratie controleert dat en stopt als
+er toch data staat.
+
 ## Wat met opzet is blijven liggen
 
 3.5 (rapportexport via mail) en 3.6 (portaalstatus in de cockpit) vergen eerst
