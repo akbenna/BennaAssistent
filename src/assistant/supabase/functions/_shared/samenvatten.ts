@@ -26,6 +26,8 @@ export async function vatSamen(o: {
   fotos?: FotoVoorPrompt[];
   markeringen?: number[];
   aantekeningen?: Aantekening[];
+  invoer?: string | null;
+  link?: string | null;
 }): Promise<{ uitkomst: Uitkomst; dienst: string; verbruik: Verbruik; uitval?: string }> {
   const namen = o.projecten.map((p) => p.naam);
   const { ruw, verbruik, dienst, uitval } = await vraagJson({

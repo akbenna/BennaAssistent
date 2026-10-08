@@ -19,6 +19,7 @@ const Instellingen = lazy(() => import("./pages/Instellingen").then((m) => ({ de
 const Delen = lazy(() => import("./pages/Delen").then((m) => ({ default: m.Delen })));
 const Notities = lazy(() => import("./pages/Notities").then((m) => ({ default: m.Notities })));
 const NotitieDetail = lazy(() => import("./pages/NotitieDetail").then((m) => ({ default: m.NotitieDetail })));
+const Nascholing = lazy(() => import("./pages/Nascholing").then((m) => ({ default: m.Nascholing })));
 
 export default function App() {
   const { sessie, gereed, tweedeStapNodig } = useSessie();
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/delen" element={<Delen />} />
             <Route path="/notities" element={<Notities />} />
             <Route path="/notities/:id" element={<NotitieDetail />} />
+            <Route path="/nascholing" element={<Nascholing />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

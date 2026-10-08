@@ -44,3 +44,6 @@ verify_jwt = true
 
 [functions.notitie-actie]
 verify_jwt = true
+
+[functions.notitie-vraag]
+verify_jwt = true
