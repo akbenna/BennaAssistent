@@ -139,7 +139,10 @@ export function Notities() {
         <header>
           <h2>Notities</h2>
           <span className="aantal">{lijst.data?.length || ""}</span>
-          <Link className="mini" to="/nascholing" style={{ marginLeft: "auto" }}>Nascholingslogboek</Link>
+          <span style={{ marginLeft: "auto", display: "flex", gap: "0.8rem" }}>
+            <Link className="mini" to="/onderzoek">Congres-agent</Link>
+            <Link className="mini" to="/nascholing">Nascholingslogboek</Link>
+          </span>
         </header>
         {(labels.data ?? []).length > 0 && (
           <div className="chips" role="radiogroup" aria-label="Filter op label" style={{ marginBottom: "0.5rem" }}>

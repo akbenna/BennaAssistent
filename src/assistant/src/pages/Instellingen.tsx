@@ -18,6 +18,8 @@ const GOOGLE_MELDING: Record<string, string> = {
   "geen-refresh-token": "Google gaf geen vernieuwingstoken. Ontkoppel de app in je Google-account en koppel opnieuw.",
   opslagfout: "De koppeling kon niet worden opgeslagen.",
   vaultfout: "Het token kon niet veilig worden opgeborgen.",
+  "geen-docs": "Google is gekoppeld, maar zonder toestemming om bestanden in Drive te maken. Koppel opnieuw en vink in het Google-scherm het maken van bestanden in Google Drive aan; anders komen er geen Google Docs van je notities.",
+  deels: "Google is gekoppeld, maar niet alle toestemmingen zijn aangevinkt. Kijk hieronder wat er ontbreekt.",
   tokenfout: "Google weigerde de koppelcode. Meestal is de poging te lang blijven liggen; probeer het opnieuw.",
 };
 
@@ -100,6 +102,13 @@ export function Instellingen() {
                 <div className="mini afkap">{b.account ?? "—"}</div>
                 {b.laatste_fout && (
                   <div className="mini" style={{ color: "var(--rood)" }}>{b.laatste_fout}</div>
+                )}
+                {b.kind === "drive" && !(b.scopes ?? []).includes("https://www.googleapis.com/auth/drive.file") && (
+                  <div className="mini" style={{ color: "var(--rood)" }}>
+                    {b.scopes
+                      ? "Mag geen bestanden in Drive maken, dus komen er geen Google Docs van je notities. Koppel opnieuw en vink dat aan."
+                      : "Gekoppeld vóór er Google Docs van notities werden gemaakt. Koppel één keer opnieuw; de documenten die nog ontbreken worden daarna vanzelf gemaakt."}
+                  </div>
                 )}
               </div>
               {b.laatst_gesynct

@@ -55,6 +55,8 @@ export interface Bron {
   actief: boolean;
   laatst_gesynct: string | null;
   laatste_fout: string | null;
+  /** Wat Google bij het koppelen werkelijk toestond; leeg bij een koppeling van vóór 9 oktober 2026. */
+  scopes: string[] | null;
 }
 
 export interface Concept {
@@ -308,7 +310,7 @@ export interface Aantekening {
 export interface Opname {
   id: string;
   status: OpnameStatus;
-  bron: "app" | "upload" | "tekst";
+  bron: "app" | "upload" | "tekst" | "onderzoek";
   project_id: string | null;
   project_vast: boolean;
   titel: string | null;
@@ -319,7 +321,7 @@ export interface Opname {
   samenvatting: Verslag | null;
   transcript: string | null;
   drive_doc_id: string | null;
-  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string; verdieping?: string; verdieping_fout?: string; link_fout?: string };
+  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string; verdieping?: string; verdieping_fout?: string; link_fout?: string; drive_opnieuw?: boolean; onderzoek_id?: string };
   fout: string | null;
   privacy_reden: string | null;
   privacy_bevestigd_op: string | null;
@@ -359,3 +361,39 @@ export interface NotitieAntwoord {
 /** Eén regel in het nascholingslogboek. */
 export type NascholingRegel = Pick<Opname, "id" | "titel" | "gestart_op" | "duur_sec" | "status" | "nascholing_punten" | "nascholing_organisator" | "verdieping" | "labels">
   & { samenvatting: Pick<Verslag, "presentaties" | "relevantie_praktijk" | "bronnen"> | null };
+
+/** Een thema dat de congres-agent voorlegt. */
+export interface OnderzoekThema {
+  id: string;
+  titel: string;
+  kern: string;
+  wat_gepresenteerd: string;
+  relevantie: "hoog" | "middel" | "laag";
+  waarom: string;
+  soort: "studie" | "richtlijn" | "overzicht" | "overig";
+  bronnen: Array<{ titel: string; url: string }>;
+  gekozen: boolean;
+  opmerking: string;
+  status: "wacht" | "gereed" | "fout" | null;
+  notitie_id: string | null;
+  fout?: string;
+}
+
+export interface Onderzoek {
+  id: string;
+  onderwerp: string;
+  url: string | null;
+  focus: string | null;
+  fase: "verkennen" | "kiezen" | "uitwerken" | "gereed" | "fout";
+  werk: "verkennen" | "antwoorden" | "uitwerken" | null;
+  werk_sinds: string | null;
+  pogingen: number;
+  overzicht: string | null;
+  themas: OnderzoekThema[];
+  bronnen: Array<{ titel: string; url: string }>;
+  gesprek: Array<{ rol: "ik" | "agent"; tekst: string; op: string }>;
+  modellen: { laatste_dienst?: string; uitval?: string; verbruik?: { invoer: number; uitvoer: number; stappen: number } };
+  fout: string | null;
+  created_at: string;
+  updated_at: string;
+}

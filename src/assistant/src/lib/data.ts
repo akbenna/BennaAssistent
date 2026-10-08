@@ -4,7 +4,7 @@ import { vandaag } from "./format";
 import { metActueleDeadlines, weekVan } from "./week";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
-  Foto, Gezondheid, Koppeling, NascholingRegel, NotitieAntwoord, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
+  Foto, Gezondheid, Koppeling, NascholingRegel, NotitieAntwoord, Onderzoek, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
   TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
 
@@ -171,7 +171,7 @@ export async function voegNotitieToe(taakId: string, inhoud: string, soort: Noti
 
 export async function haalBronnen(): Promise<Bron[]> {
   return controleer(
-    await supabase.from("sources").select("id,kind,account,actief,laatst_gesynct,laatste_fout")
+    await supabase.from("sources").select("id,kind,account,actief,laatst_gesynct,laatste_fout,scopes")
       .order("kind").returns<Bron[]>(),
   );
 }
@@ -640,7 +640,43 @@ export async function vraagNotities(vraag: string): Promise<NotitieAntwoord> {
 export async function haalNascholing(jaar: number): Promise<NascholingRegel[]> {
   return controleer(await supabase.from("notities")
     .select("id,titel,gestart_op,duur_sec,status,nascholing_punten,nascholing_organisator,verdieping,labels,samenvatting")
-    .eq("soort", "congres").in("status", ["gereed", "goedgekeurd"])
+    .eq("soort", "congres").neq("bron", "onderzoek").in("status", ["gereed", "goedgekeurd"])
     .gte("gestart_op", `${jaar}-01-01T00:00:00+01:00`).lt("gestart_op", `${jaar + 1}-01-01T00:00:00+01:00`)
     .order("gestart_op").returns<NascholingRegel[]>());
+}
+
+/* ------------------------------------------------------- congres-agent -- */
+
+const ONDERZOEK_VELDEN = "id,onderwerp,url,focus,fase,werk,werk_sinds,pogingen,overzicht,themas,bronnen,gesprek,modellen,fout,created_at,updated_at";
+
+export async function haalOnderzoeken(): Promise<Onderzoek[]> {
+  return controleer(await supabase.from("onderzoeken").select(ONDERZOEK_VELDEN).order("created_at", { ascending: false }).limit(50).returns<Onderzoek[]>());
+}
+
+export async function haalOnderzoek(id: string): Promise<Onderzoek | null> {
+  const { data, error } = await supabase.from("onderzoeken").select(ONDERZOEK_VELDEN).eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as Onderzoek | null) ?? null;
+}
+
+export async function startOnderzoek(o: { onderwerp: string; url: string | null; focus: string | null }): Promise<string> {
+  const { data, error } = await supabase.from("onderzoeken").insert({ ...o, fase: "verkennen", werk: "verkennen" }).select("id").single();
+  if (error || !data) throw new Error(error?.message ?? "Kon het onderzoek niet starten");
+  void verwerkOnderzoek();
+  return (data as { id: string }).id;
+}
+
+export async function werkOnderzoekBij(id: string, velden: Partial<Onderzoek>): Promise<void> {
+  const { error } = await supabase.from("onderzoeken").update(velden).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function verwijderOnderzoek(id: string): Promise<void> {
+  const { error } = await supabase.from("onderzoeken").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** De agent een duw geven; de planner doet het anders binnen twee minuten. */
+export async function verwerkOnderzoek(): Promise<void> {
+  await roepFunctie("onderzoek-verwerk").catch(() => { /* de planner is het vangnet */ });
 }

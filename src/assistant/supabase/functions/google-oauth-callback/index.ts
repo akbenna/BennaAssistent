@@ -1,5 +1,8 @@
 import { adminClient, audit, env } from "../_shared/core.ts";
-import { exchangeCode, g, GMAIL } from "../_shared/google.ts";
+import { exchangeCode, g, GMAIL, SCOPES } from "../_shared/google.ts";
+
+const DRIVE_FILE = "https://www.googleapis.com/auth/drive.file";
+const ontbrekend = (gegeven: string[]) => SCOPES.filter((s) => s.startsWith("https://") && !gegeven.includes(s));
 
 const terug = (q: string) => Response.redirect(`${env("APP_URL")}?google=${q}`, 302);
 
@@ -29,15 +32,28 @@ Deno.serve(async (req) => {
     return terug("tokenfout");
   }
   const refresh = tok.refresh_token as string;
+  /* Google laat je per toestemming een vinkje zetten. Wat je niet aanvinkt,
+     krijgt de app niet, en dat merk je pas wanneer hij het nodig heeft. Daarom
+     leggen we vast wat er werkelijk is gegeven, en zeggen we het meteen. */
+  const scopes = String(tok.scope ?? "").split(/\s+/).filter(Boolean);
   for (const kind of ["gmail", "calendar", "drive"] as const) {
     const { data: src, error } = await admin.from("sources")
-      .upsert({ owner_id: st.owner_id, kind, account: profiel.emailAddress, actief: true },
+      .upsert({ owner_id: st.owner_id, kind, account: profiel.emailAddress, actief: true, scopes },
         { onConflict: "owner_id,kind,account" })
       .select("id").single();
     if (error) return terug("opslagfout");
     const { error: e2 } = await admin.rpc("bewaar_token", { p_source: src.id, p_token: refresh });
     if (e2) return terug("vaultfout");
   }
-  await audit(admin, st.owner_id, "google_gekoppeld", { details: { account: profiel.emailAddress } });
-  return terug("gekoppeld");
+  await audit(admin, st.owner_id, "google_gekoppeld", { details: { account: profiel.emailAddress, ontbreekt: ontbrekend(scopes) } });
+
+  if (!scopes.includes(DRIVE_FILE)) return terug("geen-docs");
+  // Notities waar Google eerder geen document voor wilde maken, krijgen er nu alsnog een.
+  const { data: wachtend } = await admin.from("notities").select("id,modellen")
+    .eq("owner_id", st.owner_id).is("drive_doc_id", null).in("status", ["gereed", "goedgekeurd"]).limit(200);
+  for (const n of (wachtend ?? []) as Array<{ id: string; modellen: Record<string, unknown> | null }>) {
+    if (!n.modellen?.drive_fout) continue;
+    await admin.from("notities").update({ modellen: { ...n.modellen, drive_opnieuw: true } }).eq("id", n.id);
+  }
+  return terug(ontbrekend(scopes).length ? "deels" : "gekoppeld");
 });

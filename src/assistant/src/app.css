@@ -753,3 +753,12 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
 .nascholing-totaal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; }
 .nascholing-totaal b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
 @media print { .geen-print, nav, .opnamebalk { display: none !important; } }
+
+.thema.gekozen { border-left: 3px solid var(--k); }
+.themakop { display: flex; gap: 0.55rem; align-items: flex-start; cursor: pointer; }
+.themakop input { margin-top: 0.25rem; width: 1.1rem; height: 1.1rem; flex: none; }
+.themaveld { margin-top: 0.5rem; width: 100%; box-sizing: border-box; font: inherit; padding: 0.5rem 0.65rem; border: 1px solid var(--lijn); border-radius: var(--radius-klein); background: var(--vlak); color: var(--ink); resize: vertical; }
+.gesprek { display: grid; gap: 0.7rem; }
+.gesprek .bericht { padding: 0.5rem 0.7rem; border-radius: var(--radius-klein); background: var(--vlak2); }
+.gesprek .bericht.ik { background: var(--kbg); }
+.gesprek input { font: inherit; padding: 0.5rem 0.65rem; border: 1px solid var(--lijn); border-radius: var(--radius-klein); background: var(--vlak); color: var(--ink); }

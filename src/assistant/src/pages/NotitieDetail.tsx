@@ -94,7 +94,8 @@ export function NotitieDetail() {
     });
   }, "Nagelezen. De audio wordt na de bewaartermijn gewist.");
   // Een snelle notitie heeft soms geen transcript, maar wel iets om samen te vatten.
-  const heeftInhoud = Boolean(notitie.transcript) || (notitie.bron === "tekst" && Boolean(r));
+  // Een uitwerking van de congres-agent heeft geen transcript om opnieuw samen te vatten.
+  const heeftInhoud = notitie.bron !== "onderzoek" && (Boolean(notitie.transcript) || (notitie.bron === "tekst" && Boolean(r)));
   const opnieuw = heeftInhoud && !BEZIG.includes(notitie.status) && notitie.status !== "geweigerd";
   const kiesProject = (pid: string) => doe(async () => {
     await werkOpnameBij(notitie.id, {
@@ -147,6 +148,14 @@ export function NotitieDetail() {
         {datumLang(notitie.gestart_op)}, {tijdKort(notitie.gestart_op)}{notitie.duur_sec ? ` · ${duur(notitie.duur_sec)}` : ""}
         {notitie.agenda_titel ? ` · agenda: ${notitie.agenda_titel}` : ""}
       </p>
+
+      {notitie.bron === "onderzoek" && (
+        <p className="mini" style={{ margin: "0 0 0.8rem" }}>
+          Uitgezocht door de congres-agent{notitie.agenda_titel ? ` voor ${notitie.agenda_titel}` : ""}.
+          {notitie.modellen.onderzoek_id && <> <Link to={`/onderzoek/${notitie.modellen.onderzoek_id}`}>Terug naar het onderzoek</Link>.</>}
+          {" "}De genoemde publicaties worden nagezocht in PubMed; het oordeel staat onder Bronnen.
+        </p>
+      )}
 
       {notitie.bron === "tekst" && (notitie.invoer || notitie.link) && (
         <div className="kaart eigen" style={{ marginBottom: "0.8rem" }}>
@@ -440,13 +449,23 @@ export function NotitieDetail() {
         {notitie.drive_doc_id && (
           <a className="knop" href={`https://docs.google.com/document/d/${encodeURIComponent(notitie.drive_doc_id)}/edit`} target="_blank" rel="noreferrer">Google Doc</a>
         )}
-        {(notitie.status === "gereed" || notitie.status === "goedgekeurd") && (
+        {(notitie.status === "gereed" || notitie.status === "goedgekeurd") && notitie.bron !== "onderzoek" && (
           <button type="button" className="knop" onClick={() => void opnieuwSamenvatten()} disabled={bezig}>Opnieuw samenvatten</button>
         )}
         {notitie.status !== "geweigerd" && <button type="button" className="knop kaal gevaar" onClick={verwijder} disabled={bezig}>Verwijderen</button>}
       </div>
 
-      {notitie.modellen.drive_fout && <p className="mini" style={{ color: "var(--let)" }}>Geen Google Doc: {notitie.modellen.drive_fout}</p>}
+      {notitie.modellen.drive_fout && (
+        <p className="mini" style={{ color: "var(--let)" }}>
+          Geen Google Doc: {notitie.modellen.drive_fout}{" "}
+          {notitie.modellen.drive_opnieuw
+            ? <span>Wordt opnieuw geprobeerd…</span>
+            : <button type="button" className="knop klein kaal" disabled={bezig}
+                onClick={() => void doe(async () => { await werkOpnameBij(notitie.id, { modellen: { ...notitie.modellen, drive_opnieuw: true } }); await verwerkOpnames(); }, "Het document wordt opnieuw gemaakt.")}>
+                Opnieuw proberen
+              </button>}
+        </p>
+      )}
       {notitie.modellen.samenvatting && (
         <p className="mini">
           Uitgeschreven met {(notitie.modellen.transcriptie ?? []).join(", ") || "onbekend"}, samengevat met {notitie.modellen.samenvatting}
