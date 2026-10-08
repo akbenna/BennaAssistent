@@ -61,6 +61,34 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
     ],
   },
   {
+    pad: "/notities",
+    titel: "Notities",
+    kern: "Een vergadering, overleg of telefoongesprek opnemen, en wat eruit komt meteen omzetten in werk.",
+    delen: [
+      {
+        kop: "Opnemen",
+        tekst: [
+          "Eén tik op de rode knop, op Vandaag of hier, en de assistent neemt op. Elke dertig seconden gaat er een stuk naar de server, zodat een telefoon die uitvalt hooguit een halve minuut kost. Je kunt intussen gewoon door de app bladeren; de balk bovenaan laat zien dat de opname loopt. Laat het scherm aan: op een iPhone stopt de microfoon als je het vergrendelt.",
+          "Een spraakmemo, een gespreksopname van de iPhone of een WAV uit SwyxIt verwerk je met Audiobestand verwerken. Zeg aan het begin van elk gesprek dat je opneemt.",
+        ],
+      },
+      {
+        kop: "Wat er daarna gebeurt",
+        tekst: [
+          "Het gesprek wordt in stukken van vijf minuten uitgeschreven, al tijdens de vergadering, door OpenAI in de EU, met Mistral als uitval. Jouw stem wordt herkend aan de acht seconden die je onder Stem, naam en bewaartermijn opneemt. Daarna maakt een taalmodel er een verhalende samenvatting van met besluiten, actiepunten, afspraken en open vragen: OpenAI eerst, Claude als uitval. Het project kiest de assistent uit je agenda en uit het gesprek, tenzij je het vooraf hebt gekozen.",
+          "Jouw actiepunten worden voorstellen, met de vergadering als herkomst. Ze staan pas op je lijst als je ze op Voorstellen accepteert. Wat bij een ander ligt, zet je met Volg op als eigen taak neer. Een vervolgafspraak zet je met In agenda in je Google Agenda. En er komt een Google Doc in de map Notities/<project> van je Drive; daarvoor moet Google één keer opnieuw worden gekoppeld.",
+        ],
+      },
+      {
+        kop: "Privacy",
+        tekst: [
+          "Notities zijn voor bestuur, kaderwerk en zakelijk overleg. Consulten en alles met patiëntgegevens blijven bij SmartVoice. Over het transcript draait hetzelfde privacyfilter als over mail. Slaat het aan, dan wordt er niets samengevat en wacht de notitie op jou: lees het transcript, en verwijder hem of bevestig dat het een vals alarm was. Die bevestiging wordt vastgelegd.",
+          "Na Goedkeuren loopt de bewaartermijn van de audio, standaard dertig dagen. Daarna wordt alleen de audio gewist; transcript en samenvatting blijven.",
+        ],
+      },
+    ],
+  },
+  {
     pad: "/voorstellen",
     titel: "Voorstellen",
     kern: "Wat de assistent in je mail vond en wat hij denkt dat je ermee moet.",
@@ -185,6 +213,6 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
 export function hoofdstukVoor(pad: string): Hoofdstuk | null {
   // Delen valt onder Taken: het is dezelfde vorm, alleen binnengekomen via het
   // deelmenu van de telefoon.
-  const gezocht = pad === "/delen" ? "/taken" : pad;
+  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") ? "/notities" : pad;
   return HOOFDSTUKKEN.find((h) => h.pad === gezocht) ?? null;
 }

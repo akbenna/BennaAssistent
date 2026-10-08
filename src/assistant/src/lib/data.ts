@@ -1,9 +1,9 @@
-import { supabase } from "./supabase";
+import { roepFunctie, supabase } from "./supabase";
 import { vandaag } from "./format";
 import { metActueleDeadlines, weekVan } from "./week";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
-  Gezondheid, Koppeling, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
+  Gezondheid, Koppeling, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
   TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
 
@@ -45,6 +45,8 @@ export interface Tellingen {
   vandaag: number;
   wachten: number;
   antwoord: number;
+  /** Notities die klaarstaan om na te lezen, of op een bevestiging wachten. */
+  notities?: number;
 }
 
 /* Eén rondje in plaats van vier. De tabbalk vraagt dit bij elke navigatie en
@@ -453,4 +455,86 @@ export async function haalSchuldig(): Promise<Schuldig[]> {
   }
   // Oudste schuld bovenaan: dat is waar je als eerste achteraan wilt.
   return [...per.values()].sort((a, b) => a.oudste.localeCompare(b.oudste));
+}
+
+/* -------------------------------------------------------------- notities -- */
+
+const OPNAME_REGEL = "id,status,titel,gestart_op,duur_sec,project_id,bron,projects(naam,kleur)";
+
+export async function haalOpnames(o: { zoek?: string; projectId?: string | null; statussen?: Opname["status"][]; limiet?: number } = {}): Promise<OpnameRegel[]> {
+  let q = supabase.from("notities").select(OPNAME_REGEL);
+  if (o.projectId) q = q.eq("project_id", o.projectId);
+  if (o.statussen?.length) q = q.in("status", o.statussen);
+  /* Komma's en haakjes zijn syntaxis in het filter, % en _ zijn jokers: wie op
+     "50%" zoekt, bedoelt niet "50 en dan wat dan ook". */
+  const veilig = (o.zoek ?? "").replace(/[%_,()\\*"]/g, " ").trim();
+  if (veilig) q = q.or(`titel.ilike.%${veilig}%,transcript.ilike.%${veilig}%`);
+  return controleer(await q.order("gestart_op", { ascending: false }).limit(o.limiet ?? 100).returns<OpnameRegel[]>());
+}
+
+export async function haalOpname(id: string): Promise<Opname | null> {
+  const { data, error } = await supabase.from("notities").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as Opname | null) ?? null;
+}
+
+export async function werkOpnameBij(id: string, velden: Partial<Opname>): Promise<void> {
+  const { error } = await supabase.from("notities").update(velden).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Wist de notitie en alle audio. Taken die eruit voortkwamen blijven staan. */
+export async function verwijderOpname(o: Pick<Opname, "id">, eigenaar: string): Promise<void> {
+  const { data: delen } = await supabase.from("notitie_delen").select("volgnummer").eq("notitie_id", o.id);
+  for (const d of (delen ?? []) as Array<{ volgnummer: number }>) {
+    const map = `${eigenaar}/${o.id}/deel-${String(d.volgnummer).padStart(3, "0")}`;
+    const { data: bestanden } = await supabase.storage.from("opnames").list(map, { limit: 1000 });
+    if (bestanden?.length) await supabase.storage.from("opnames").remove(bestanden.map((b) => `${map}/${b.name}`));
+  }
+  const { error } = await supabase.from("notities").delete().eq("id", o.id);
+  if (error) throw new Error(error.message);
+}
+
+/** De taken die uit deze notitie voortkwamen, via de vergadering als bron. */
+export async function haalTakenVanOpname(itemId: string | null): Promise<TaakRij[]> {
+  if (!itemId) return [];
+  const { data, error } = await supabase.from("task_links")
+    .select(`tasks(${TAAK_MET_PROJECT})`).eq("item_id", itemId)
+    .returns<Array<{ tasks: TaakRij | null }>>();
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => r.tasks).filter((t): t is TaakRij => Boolean(t));
+}
+
+/** Een actiepunt van een ander, of een vervolgstap, als eigen taak met de vergadering als herkomst. */
+export async function maakTaakUitOpname(o: Opname, titel: string, deadline: string | null): Promise<string> {
+  const id = await maakTaak({
+    titel, deadline, project_id: o.project_id,
+    toelichting: `Uit ${o.titel ?? "een opgenomen gesprek"}.`,
+  });
+  if (o.item_id) {
+    const { error } = await supabase.from("task_links").insert({ task_id: id, item_id: o.item_id, rol: "bron" });
+    if (error) throw new Error(error.message);
+  }
+  return id;
+}
+
+export async function haalOpnameInstellingen(): Promise<OpnameInstellingen | null> {
+  const { data, error } = await supabase.from("notitie_instellingen")
+    .select("owner_id,mijn_naam,stemreferentie_pad,bewaartermijn_audio_dagen").maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as OpnameInstellingen | null) ?? null;
+}
+
+export async function bewaarOpnameInstellingen(eigenaar: string, velden: Partial<OpnameInstellingen>): Promise<void> {
+  const { error } = await supabase.from("notitie_instellingen").upsert({ owner_id: eigenaar, ...velden });
+  if (error) throw new Error(error.message);
+}
+
+/** Stoot de verwerking aan. Mislukt het, dan pakt de planner het binnen twee minuten op. */
+export async function verwerkOpnames(): Promise<void> {
+  await roepFunctie("notitie-verwerk").catch(() => { /* de planner is het vangnet */ });
+}
+
+export async function notitieActie(notitieId: string, actie: "agenda" | "bevestig", index?: number): Promise<{ link?: string | null }> {
+  return roepFunctie("notitie-actie", { notitie_id: notitieId, actie, index });
 }

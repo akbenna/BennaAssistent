@@ -211,3 +211,71 @@ export interface Schuldig {
   oudste: string;
   taken: Array<{ id: string; titel: string | null }>;
 }
+
+/* ---------------------------------------------------- notities ----------- */
+
+export type OpnameStatus =
+  | "opname" | "verwerken" | "samenvatten" | "bezig" | "gereed" | "goedgekeurd" | "geweigerd" | "fout";
+
+export interface Actiepunt {
+  wie: string;
+  wat: string;
+  deadline: string;
+  van_mij: boolean;
+}
+
+export interface VervolgAfspraak {
+  wat: string;
+  datum: string;
+  begintijd: string;
+  eindtijd: string;
+  locatie: string;
+  event_id?: string;
+}
+
+/** Wat het taalmodel van een gesprek maakte; zie `_shared/notities.ts`. */
+export interface Verslag {
+  titel: string;
+  project: string;
+  samenvatting: string;
+  deelnemers: string[];
+  besluiten: string[];
+  actiepunten: Actiepunt[];
+  afspraken: VervolgAfspraak[];
+  open_vragen: string[];
+  mijn_vervolgstappen: string[];
+}
+
+/** Eén opgenomen vergadering, overleg of gesprek. */
+export interface Opname {
+  id: string;
+  status: OpnameStatus;
+  bron: "app" | "upload";
+  project_id: string | null;
+  project_vast: boolean;
+  titel: string | null;
+  gestart_op: string;
+  duur_sec: number | null;
+  agenda_titel: string | null;
+  deelnemers: string[];
+  samenvatting: Verslag | null;
+  transcript: string | null;
+  drive_doc_id: string | null;
+  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string };
+  fout: string | null;
+  privacy_reden: string | null;
+  privacy_bevestigd_op: string | null;
+  item_id: string | null;
+  audio_verwijderen_na: string | null;
+  audio_verwijderd: boolean;
+}
+
+export type OpnameRegel = Pick<Opname, "id" | "status" | "titel" | "gestart_op" | "duur_sec" | "project_id" | "bron">
+  & { projects: { naam: string; kleur: string | null } | null };
+
+export interface OpnameInstellingen {
+  owner_id: string;
+  mijn_naam: string;
+  stemreferentie_pad: string | null;
+  bewaartermijn_audio_dagen: number;
+}

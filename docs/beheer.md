@@ -20,7 +20,11 @@ Bij de Edge Functions (Supabase → Edge Functions → Secrets):
 | `ANTHROPIC_API_KEY` | triage, concepten, meedenken |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | de koppeling met Gmail, Agenda en Drive |
 | `CRON_SECRET` | wat de nachtploeg meestuurt om binnen te komen |
-| `APP_URL` | waar de OAuth-terugkeer je heen stuurt |
+| `APP_URL` | waar de OAuth-terugkeer je heen stuurt, en waar links naar een notitie naartoe wijzen |
+| `OPENAI_API_KEY` | Notities: uitschrijven en samenvatten. Een sleutel uit een **nieuw** project met regio Europa; een bestaand project is niet om te zetten |
+| `OPENAI_BASE_URL` | standaard `https://eu.api.openai.com/v1`; alleen aanpassen als je bewust buiten de EU wilt |
+| `OPENAI_TRANSCRIBE_MODEL`, `OPENAI_TEXT_MODEL` | standaard `gpt-4o-transcribe-diarize` en `gpt-5-mini` |
+| `MISTRAL_API_KEY` | Notities: uitval voor het uitschrijven als OpenAI wegvalt (EU). Leeg laten mag; dan is er geen uitval |
 
 In de Vault van de database (`vault.secrets`):
 
@@ -47,6 +51,7 @@ geen back-up maken.
 | elke nacht 03.15 | oude gegevens wissen (zie hieronder) |
 | elke nacht 03.30 | mislukte triage inhalen |
 | elke nacht 05.05 | terugkerend onderhoud inplannen |
+| elke twee minuten | opnames van Notities uitschrijven en samenvatten; audio na de bewaartermijn wissen |
 
 De tijden in de tabel zijn Amsterdams; in `cron.job` staan ze in UTC. Hoe het
 ze vergaat zie je op Instellingen onder *Nachtploeg* — dat blokje leest
@@ -58,6 +63,11 @@ ze vergaat zie je op Instellingen onder *Nachtploeg* — dat blokje leest
 dan negentig dagen, dagoverzichten ouder dan dertig dagen, logregels ouder dan
 een jaar, en verlopen koppelpogingen. Dit hoort ook in het verwerkingsregister
 van de praktijk te staan.
+
+Voor Notities wist `notitie-verwerk` de audio, omdat bestanden in Storage niet
+met SQL te wissen zijn: na goedkeuren volgens de ingestelde bewaartermijn
+(standaard dertig dagen), en zeven dagen na een weigering door het
+privacyfilter. Transcript en samenvatting blijven tot je de notitie zelf wist.
 
 ## Als er iets misgaat
 
@@ -77,6 +87,30 @@ verversing helpt dus zelden — kijk eerst naar de uitrol in Vercel.
 **Terugzetten uit een back-up.** De nachtelijke Action zet een `schema.sql.gz`
 en een `gegevens.sql.gz` als privérelease in deze repository. Terugzetten doe
 je met `psql` op een leeg project, schema eerst.
+
+## Notities
+
+Een opname gaat in delen van vijf minuten naar de bucket `opnames`, elk deel
+in blokken van dertig seconden. `notitie-verwerk` schrijft elk deel uit zodra
+het compleet is, dus al tijdens de vergadering, en vat de notitie samen als alle
+delen uit zijn. Er is geen ffmpeg: de app levert bestanden af die de
+spraakdienst rechtstreeks aanneemt, en knipt een WAV of een lange spraakmemo
+zelf op.
+
+Wat het kost: OpenAI rekent voor uitschrijven ongeveer 0,6 dollarcent per
+minuut, een vergadering van twee uur dus zo'n zeventig cent, plus enkele
+centen voor de samenvatting. Mistral en Claude kosten alleen iets als OpenAI
+uitvalt. Er draait geen aparte server.
+
+Na het uitrollen moet Google **één keer opnieuw gekoppeld** worden op
+Instellingen. Er is een recht bijgekomen (`drive.file`: alleen bestanden die de
+assistent zelf maakt) om het Google Doc van een notitie te kunnen aanmaken.
+Tot dat gebeurt, staat bij elke notitie dat er geen Doc kon worden gemaakt; de
+rest werkt gewoon.
+
+**Een notitie blijft op 'Wordt uitgeschreven' staan.** Kijk in de logs van
+`notitie-verwerk`. Een deel wordt drie keer geprobeerd; daarna staat de reden
+in de notitie en kun je het opnieuw proberen.
 
 ## Een bewuste uitzondering
 

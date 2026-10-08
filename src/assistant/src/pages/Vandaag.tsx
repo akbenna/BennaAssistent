@@ -4,10 +4,11 @@ import { Fout, Icoon, Leeg, Merkje, Skelet, useAsync } from "../components/ui";
 import { Sfeer, type SfeerSoort } from "../components/sfeer";
 import type { Weekoverzicht } from "../types/db";
 import { Cockpit } from "../components/Cockpit";
+import { OpnameKnop } from "../components/Opname";
 import { TaakKaart } from "../components/TaakKaart";
 import { TaakPaneel } from "../components/TaakPaneel";
 import { datumKort, datumLang, deadlineToon, relatief, tijdKort, vandaag } from "../lib/format";
-import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalTaken, haalTellingen, haalWeekoverzicht } from "../lib/data";
+import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalOpnames, haalTaken, haalTellingen, haalWeekoverzicht } from "../lib/data";
 
 /* De groet volgt het uur in Amsterdam en niet dat van de browser: wie vanuit
    een andere tijdzone inlogt kijkt naar een Nederlandse werkdag. */
@@ -35,6 +36,7 @@ export function Vandaag() {
     [ronde],
   );
   const antwoorden = useAsync(() => haalTaken({ statussen: ["antwoord_binnen"], limiet: 25 }), [ronde]);
+  const naTeLezen = useAsync(() => haalOpnames({ statussen: ["gereed", "geweigerd"], limiet: 5 }), [ronde]);
 
   const ververs = () => setRonde((r) => r + 1);
   const t = tellingen.data;
@@ -63,6 +65,10 @@ export function Vandaag() {
             <p className="mini" style={{ margin: "4px 0 0" }}>{datumLang(vandaag())}</p>
           </div>
         </div>
+
+        {/* Eén tik vanaf het beginscherm: de app openen en meteen opnemen. Het
+            project kiest de assistent zelf uit je agenda en het gesprek. */}
+        <OpnameKnop compact />
 
         <div className="herotellers">
           <Link to="/voorstellen" className={`heroteller${(t?.voorstellen ?? 0) > 0 ? " aan" : ""}`}>
@@ -95,6 +101,26 @@ export function Vandaag() {
           </>
         )}
       </section>
+
+      {(naTeLezen.data ?? []).length > 0 && (
+        <section className="sectie">
+          <header>
+            <h2>Na te lezen</h2>
+            <Link className="mini" to="/notities">alle notities</Link>
+          </header>
+          <div className="kaart">
+            {(naTeLezen.data ?? []).map((n) => (
+              <div className="brief-regel" key={n.id}>
+                <span className="tijd">{datumKort(n.gestart_op)}</span>
+                <span className="groei">
+                  <Link to={`/notities/${n.id}`}>{n.titel || "Zonder titel"}</Link>
+                  <div className="mini">{n.status === "geweigerd" ? "Het privacyfilter wacht op jou" : n.projects?.naam ?? "Klaar om na te lezen"}</div>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {week.data && <Weekstart w={week.data} bijOpenen={setOpen} />}
 

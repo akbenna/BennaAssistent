@@ -14,6 +14,11 @@ hij het terugkerende onderhoud van het praktijkportaal bij en zet het op tijd
 op je lijst — ook de rapportenronde uit VIPLive en Bricks, die op het portaal
 wordt ingelezen.
 
+Daarnaast neemt hij vergaderingen, overleg en telefoongesprekken op. Eén tik
+op Vandaag en hij neemt op; daarna schrijft hij uit, vat samen met besluiten en
+actiepunten, zet een Google Doc in de projectmap, en maakt van jouw actiepunten
+taakvoorstellen. Consulten horen daar niet bij: die blijven bij SmartVoice.
+
 ## Wat het met opzet níét doet
 
 Het model stelt voor, de mens legt vast. Er bestaat geen enkele automatische

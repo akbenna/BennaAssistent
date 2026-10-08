@@ -230,6 +230,32 @@ wijzen nu naar de praktijkanalyse, tabblad Import. Er was nooit iets
 ingelezen, dus er is niets verloren. De migratie controleert dat en stopt als
 er toch data staat.
 
+## Notities — GEBOUWD (oktober 2026)
+
+Vergaderingen, overleg en telefoongesprekken opnemen, met de eigenaar als enige
+spreker die bij naam bekend is. Ontworpen als losse app voor BennaHub en daarna
+hierheen gehaald, omdat het hier op zijn plaats is: actiepunten worden
+taakvoorstellen zoals een mail dat wordt, projecten zijn de indeling, en de
+Google-koppeling bestond al. Het kost geen extra dienst of abonnement.
+
+Keuzes:
+- **Geen ffmpeg, dus de browser doet het formaat.** Delen van vijf minuten, elk
+  een eigen opnamesessie; WAV wordt op bytes geknipt; lange spraakmemo's worden
+  in de browser naar 16 kHz mono omgezet (`src/lib/geluid.ts`).
+- **OpenAI eerst, voor uitschrijven én samenvatten**, via het EU-project. Uitval:
+  Mistral voor spraak (Claude kan geen audio uitschrijven), Claude voor de
+  samenvatting. Zo draagt Claude niet de lange transcripten.
+- **Het privacyfilter draait over het transcript.** Slaat het aan, dan wordt er
+  niets samengevat; de eigenaar kan na nalezen een vals alarm bevestigen, en dat
+  wordt gelogd. Het filter zelf blijft onveranderd.
+- **Niets komt vanzelf op de lijst.** Eigen actiepunten worden voorstellen; een
+  actiepunt van een ander, een vervolgstap en een agenda-afspraak gaan pas
+  over na een tik.
+
+Open: zoeken op betekenis (embeddings) en de Drive-inbox voor bestanden die
+buiten de app binnenkomen. Allebei bewust uitgesteld; de app-upload dekt de
+spraakmemo's en de SwyxIt-exports.
+
 ## Wat met opzet is blijven liggen
 
 3.5 (rapportexport via mail) en 3.6 (portaalstatus in de cockpit) vergen eerst
