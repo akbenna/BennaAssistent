@@ -31,7 +31,7 @@ import { schrijfUit } from "../_shared/spraak.ts";
 import { vatSamen } from "../_shared/samenvatten.ts";
 import { leesFoto, verdiep } from "../_shared/bronnen.ts";
 import {
-  docHtml, GEEN_PROJECT, maakTranscript, plaatsDeel, SOORTEN, verzamelBronnen,
+  docHtml, GEEN_PROJECT, koppelSprekers, maakTranscript, noemSprekers, SOORTEN, verzamelBronnen,
   type FotoAnalyse, type FotoVoorPrompt, type RuwSegment, type Segment, type Soort, type Uitkomst, type Verdieping,
 } from "../_shared/notities.ts";
 
@@ -249,17 +249,17 @@ async function vatNotitieSamen(admin: Admin, n: any) {
 
   const { data: delen } = await admin.from("notitie_delen").select("volgnummer,begin_sec,duur_sec,segmenten,dienst")
     .eq("notitie_id", n.id).order("volgnummer");
-  const alle: Segment[] = [];
   const diensten = new Set<string>();
-  for (const d of delen ?? []) {
-    alle.push(...plaatsDeel((d.segmenten ?? []) as RuwSegment[], { volgnummer: d.volgnummer, begin: Number(d.begin_sec), duur: d.duur_sec }, inst.mijn_naam));
-    if (d.dienst) diensten.add(d.dienst);
-  }
+  for (const d of delen ?? []) if (d.dienst) diensten.add(d.dienst);
+  // Sprekers over de delen heen gekoppeld, de dubbele zin op elke naad eruit.
+  const alle: Segment[] = koppelSprekers((delen ?? []).map((d) => ({
+    volgnummer: d.volgnummer, begin: Number(d.begin_sec), duur: d.duur_sec, segmenten: (d.segmenten ?? []) as RuwSegment[],
+  })), inst.mijn_naam);
   if (!alle.length) {
     await admin.from("notities").update({ status: "fout", fout: "Geen spraak herkend in de opname" }).eq("id", n.id);
     return;
   }
-  const transcript = maakTranscript(alle);
+  let transcript = maakTranscript(alle);
   const duur = Math.round(Math.max(...alle.map((s) => s.eind)));
   modellen.transcriptie = [...diensten];
 
@@ -309,6 +309,8 @@ async function vatNotitieSamen(admin: Admin, n: any) {
     projectHint: hint?.naam ?? null, bestandsnaam: (n.modellen?.bestandsnaam as string | undefined) ?? null,
   });
   r.bronnen = verzamelBronnen(fotos, r.genoemde_bronnen);
+  // Namen die het model uit het gesprek haalde, in het transcript zelf.
+  transcript = noemSprekers(transcript, r.sprekers);
   modellen.samenvatting = dienst;
   if (uitval) modellen.samenvatting_uitval = uitval;
   const project = vast ?? projecten.find((p) => p.naam === r.project && r.project !== GEEN_PROJECT) ?? hint;

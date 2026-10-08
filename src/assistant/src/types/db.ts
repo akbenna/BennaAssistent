@@ -290,6 +290,8 @@ export interface Verslag {
   open_vragen: string[];
   mijn_vervolgstappen: string[];
   presentaties?: Presentatie[];
+  /** Wie bij welk label hoort, als dat uit het gesprek bleek. */
+  sprekers?: Array<{ label: string; naam: string; rol: string }>;
   relevantie_praktijk?: string;
   kanttekeningen?: string[];
   bronnen?: Bron[];

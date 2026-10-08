@@ -12,9 +12,11 @@
  *   zodra een deel klaar is, kan het al worden uitgeschreven terwijl de
  *   vergadering doorloopt.
  *
- * Het volgende deel begint een seconde vóór het vorige stopt. Een naad zonder
- * overlap verliest een lettergreep; een naad met overlap herhaalt er hooguit
- * één, en dat weet het taalmodel.
+ * Het volgende deel begint vier seconden vóór het vorige stopt. Een naad
+ * zonder overlap verliest een lettergreep. En de zin die op de naad in allebei
+ * staat, is van één persoon: daarmee koppelt de server de sprekerlabels van het
+ * ene deel aan die van het volgende (`koppelSprekers`). De dubbele zin haalt
+ * hij er daarna weer uit.
  *
  * Alles wat naar de server gaat loopt door één wachtrij, op volgorde, en wordt
  * herhaald tot het lukt: het aanmelden van een deel, elk blok, en het melden
@@ -25,7 +27,7 @@ import { supabase } from "./supabase";
 
 export const BLOK_MS = 30_000;
 export const DEEL_MS = 5 * 60_000;
-const OVERLAP_MS = 1_000;
+const OVERLAP_MS = 4_000;
 
 export interface Formaat { mime: string; ext: string; type: string }
 
