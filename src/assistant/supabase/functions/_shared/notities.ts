@@ -65,6 +65,104 @@ export function maakTranscript(segmenten: Segment[]): string {
   return regels.map((r) => `[${mmss(r.start)}]${r.spreker ? ` ${r.spreker}:` : ""} ${r.tekst}`).join("\n");
 }
 
+/* ------------------------------------------------- sprekers over de delen -- */
+
+export interface DeelUitslag {
+  volgnummer: number;
+  begin: number;
+  duur: number | null;
+  segmenten: RuwSegment[];
+}
+
+/** Woorden van een zin, zonder hoofdletters, accenten en leestekens. */
+const woordenVan = (t: string): string[] =>
+  t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 1);
+
+/** Twee stukken tekst zijn dezelfde uitspraak als ze minstens twee woorden en de helft van hun woorden delen. */
+export function zelfdeUitspraak(a: string, b: string): boolean {
+  const x = new Set(woordenVan(a)), y = new Set(woordenVan(b));
+  if (!x.size || !y.size) return false;
+  let samen = 0;
+  for (const w of x) if (y.has(w)) samen++;
+  return samen >= 2 && samen / Math.min(x.size, y.size) >= 0.5;
+}
+
+const letter = (i: number): string => i < 26 ? String.fromCharCode(65 + i) : letter(Math.floor(i / 26) - 1) + String.fromCharCode(65 + (i % 26));
+
+/**
+ * SPREKERS DIE OVER DE DELEN HEEN DEZELFDE BLIJVEN
+ *
+ * De spraakherkenning kent sprekers per bestand: "B" in deel 1 is niet per se
+ * "B" in deel 2. Knippen in stemfragmenten om ze te herkennen kan niet, want
+ * de server heeft geen ffmpeg. Wat wel kan: de delen overlappen een paar
+ * seconden, en de zin die op de naad in allebei staat is van één persoon. Zijn
+ * label in het ene deel en in het andere horen dus bij elkaar.
+ *
+ * Wat zo gekoppeld is, krijgt één label voor de hele opname (Spreker A, B, C,
+ * op volgorde van eerste keer spreken). Wat niet te koppelen is, krijgt een
+ * eigen letter: liever twee labels voor één persoon dan één label voor twee.
+ * De zin die door de overlap dubbel staat, staat er daarna één keer.
+ */
+export function koppelSprekers(delen: DeelUitslag[], mijnNaam: string, overlapSec = 4): Segment[] {
+  const geordend = [...delen].sort((a, b) => a.volgnummer - b.volgnummer);
+  const ouder = new Map<string, string>();
+  const vind = (k: string): string => {
+    let w = k;
+    while (ouder.get(w) && ouder.get(w) !== w) w = ouder.get(w)!;
+    ouder.set(k, w);
+    return w;
+  };
+  const verbind = (a: string, b: string) => { const x = vind(a), y = vind(b); if (x !== y) ouder.set(y, x); };
+
+  interface Stuk { sleutel: string | null; eigen: boolean; start: number; eind: number; tekst: string; weg?: boolean }
+  const perDeel: Stuk[][] = geordend.map((d) => (d.segmenten ?? [])
+    .map((s) => ({ ...s, tekst: (s.tekst ?? "").trim() }))
+    .filter((s) => s.tekst)
+    .map((s) => {
+      const eigen = s.spreker === mijnNaam;
+      const sleutel = s.spreker && !eigen ? `${d.volgnummer}:${s.spreker}` : null;
+      if (sleutel && !ouder.has(sleutel)) ouder.set(sleutel, sleutel);
+      return { sleutel, eigen, start: d.begin + (s.start || 0), eind: d.begin + (s.eind ?? d.duur ?? s.start ?? 0), tekst: s.tekst };
+    }));
+
+  for (let k = 0; k + 1 < perDeel.length; k++) {
+    const naad = geordend[k + 1]!.begin;
+    const staart = perDeel[k]!.filter((s) => s.eind > naad - 1);
+    const kop = perDeel[k + 1]!.filter((s) => s.start < naad + overlapSec + 1);
+    for (const b of kop) {
+      const a = staart.find((x) => zelfdeUitspraak(x.tekst, b.tekst));
+      if (!a) continue;
+      if (a.sleutel && b.sleutel) verbind(a.sleutel, b.sleutel);
+      // Alleen weglaten wat helemaal binnen de overlap valt; een zin die
+      // doorloopt na de naad bevat nieuwe woorden.
+      if (b.eind <= naad + overlapSec + 1) b.weg = true;
+    }
+  }
+
+  const alle = perDeel.flat().filter((s) => !s.weg).sort((a, b) => a.start - b.start);
+  const letters = new Map<string, string>();
+  for (const s of alle) {
+    if (!s.sleutel) continue;
+    const w = vind(s.sleutel);
+    if (!letters.has(w)) letters.set(w, letter(letters.size));
+  }
+  return alle.map((s) => ({
+    spreker: s.eigen ? mijnNaam : s.sleutel ? `Spreker ${letters.get(vind(s.sleutel))}` : null,
+    start: s.start, eind: s.eind, tekst: s.tekst,
+  }));
+}
+
+/** Zet de namen die het model herkende in het transcript: "Jan (spreker A):". */
+export function noemSprekers(transcript: string, sprekers: SprekerNaam[]): string {
+  let uit = transcript;
+  for (const s of sprekers) {
+    if (!s.naam || !/^Spreker [A-Z]+$/.test(s.label)) continue;
+    const re = new RegExp(`(\\]) ${s.label}:`, "g");
+    uit = uit.replace(re, `$1 ${s.naam} (${s.label.replace("Spreker", "spreker")}):`);
+  }
+  return uit;
+}
+
 /* ------------------------------------------------------------ het schema -- */
 
 export interface Actiepunt {
@@ -82,6 +180,13 @@ export interface Afspraak {
   locatie: string;
   /** Gezet zodra hij in de agenda staat; voorkomt een tweede keer. */
   event_id?: string;
+}
+
+/** Een label uit het transcript met de naam die uit het gesprek blijkt. */
+export interface SprekerNaam {
+  label: string;
+  naam: string;
+  rol: string;
 }
 
 /** Wat voor gesprek het is. Bepaalt de toon van de notitie, niet het schema. */
@@ -128,6 +233,7 @@ export interface Uitkomst {
   genoemde_bronnen: GenoemdeBron[];
   relevantie_praktijk: string;
   kanttekeningen: string[];
+  sprekers: SprekerNaam[];
   /** Na het samenvoegen met de slides: alle bronnen, ontdubbeld. Niet door het model gevuld. */
   bronnen?: Bron[];
 }
@@ -147,7 +253,7 @@ export function schema(projectNamen: string[]) {
     type: "object",
     additionalProperties: false,
     required: ["titel", "project", "samenvatting", "deelnemers", "besluiten", "actiepunten", "afspraken", "open_vragen", "mijn_vervolgstappen",
-      "presentaties", "genoemde_bronnen", "relevantie_praktijk", "kanttekeningen"],
+      "presentaties", "genoemde_bronnen", "relevantie_praktijk", "kanttekeningen", "sprekers"],
     properties: {
       titel: { type: "string", description: "Korte, specifieke titel van hooguit acht woorden, zonder datum." },
       project: { type: "string", enum: [...projectNamen, GEEN_PROJECT] },
@@ -219,6 +325,20 @@ export function schema(projectNamen: string[]) {
         },
       },
       relevantie_praktijk: { type: "string", description: "Alleen bij een congres: wat dit betekent voor de huisartsenpraktijk en het kaderwerk, in het licht van de NHG-standaarden. Anders leeg." },
+      sprekers: {
+        type: "array",
+        description: "Voor elk label 'Spreker X' in het transcript: wie het is, als dat uit het gesprek blijkt (iemand wordt bij naam aangesproken, stelt zich voor, of wordt aangekondigd). Alleen als je het zeker weet; anders naam leeg laten.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["label", "naam", "rol"],
+          properties: {
+            label: { type: "string", description: "Precies zoals in het transcript, bijvoorbeeld 'Spreker B'." },
+            naam: { type: "string", description: "Naam, of leeg als het niet zeker is." },
+            rol: { type: "string", description: "Rol of functie als die genoemd is (penningmeester, spreker, POH), of leeg." },
+          },
+        },
+      },
       kanttekeningen: { ...lijst, description: "Alleen bij een congres: methodologische of praktische kanttekeningen die werden genoemd of die voor de hand liggen (sponsoring, surrogaat-eindpunten, populatie die afwijkt van de eerste lijn). Markeer eigen kanttekeningen als 'Notulist:'." },
     },
   };
@@ -252,8 +372,8 @@ Regels:
 - Gebruik uitsluitend wat in het transcript staat. Verzin geen namen, bedragen, data of besluiten. Is iets onverstaanbaar of dubbelzinnig, zeg dat dan en zet het bij de open vragen.
 - Schrijf de samenvatting als heldere, verhalende lopende tekst: wat speelde er, welke afwegingen kwamen langs, waar kwam men uit. Geen opsomming in de samenvatting.
 - Een besluit is alleen een besluit als het zo is uitgesproken; voorstellen en meningen zijn geen besluiten.
-- Spreker "${o.mijnNaam}" is altijd dr. Bennaghmouch zelf. Andere labels ("Spreker 2B") worden per deel van enkele minuten opnieuw toegekend; hetzelfde label in een ander deel kan een ander persoon zijn. Leid namen af uit aanspreekvormen waar dat kan.
-- Op de grens van twee delen kan een zin dubbel staan; neem hem één keer mee.
+- Spreker "${o.mijnNaam}" is altijd dr. Bennaghmouch zelf. De andere labels (Spreker A, B, C) zijn waar mogelijk over de hele opname gekoppeld. Het kan nog gebeuren dat één persoon twee labels heeft; dan leid je dat af uit de inhoud. Twee personen onder één label komt bijna niet voor.
+- Vul sprekers: wie hoort bij welk label, alleen als het uit het gesprek blijkt. Gebruik die namen ook in de samenvatting en bij de actiepunten.
 - De opname is van ${o.datum}. Reken "volgende week vrijdag" alleen om naar een datum als dat eenduidig is.
 - Momenten die de eigenaar tijdens de opname markeerde zijn voor hem belangrijk; geef ze een plek in de samenvatting.
 - Kies het project dat het best past, of "${GEEN_PROJECT}":
@@ -539,6 +659,10 @@ export function trekRecht(r: unknown, projectNamen: string[]): Uitkomst {
     }).filter((a) => a.wat && DATUM.test(a.datum)),
     open_vragen: tekstLijst(o.open_vragen),
     mijn_vervolgstappen: tekstLijst(o.mijn_vervolgstappen),
+    sprekers: (Array.isArray(o.sprekers) ? o.sprekers : []).slice(0, 30).map((x) => {
+      const v = (x ?? {}) as Record<string, unknown>;
+      return { label: tekst(v.label, 40), naam: tekst(v.naam, 120), rol: tekst(v.rol, 120) };
+    }).filter((x) => /^Spreker [A-Z]+$/.test(x.label)),
     presentaties: (Array.isArray(o.presentaties) ? o.presentaties : []).slice(0, 30).map((p) => {
       const x = (p ?? {}) as Record<string, unknown>;
       return { spreker: tekst(x.spreker, 200) || "onbekend", onderwerp: tekst(x.onderwerp, 300), kernboodschappen: tekstLijst(x.kernboodschappen), onderbouwing: tekstLijst(x.onderbouwing) };

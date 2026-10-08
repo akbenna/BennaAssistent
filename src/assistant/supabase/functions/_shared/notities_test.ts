@@ -259,3 +259,53 @@ Deno.test("verdiep: de bron komt van PubMed, en zonder abstract is er geen oorde
     assertEquals(b.bevindingen, "");
   } finally { nep2.herstel(); }
 });
+
+/* ---------------------------------------------- sprekers over de delen --- */
+
+import { koppelSprekers, noemSprekers, zelfdeUitspraak } from "./notities.ts";
+
+Deno.test("zelfdeUitspraak: dezelfde zin op de naad, ook met een woord minder", () => {
+  assert(zelfdeUitspraak("Dat is precies het punt, Jan.", "dat is precies het punt"));
+  assert(!zelfdeUitspraak("Dat is precies het punt.", "We gaan door naar agendapunt drie."));
+  assert(!zelfdeUitspraak("Ja.", "Ja."), "één woord is te weinig om twee sprekers aan elkaar te koppelen");
+});
+
+Deno.test("koppelSprekers: wie op de naad spreekt houdt zijn label, de dubbele zin verdwijnt", () => {
+  const s = koppelSprekers([
+    { volgnummer: 1, begin: 0, duur: 304, segmenten: [
+      { spreker: "Abdelkader", start: 0, eind: 5, tekst: "Welkom allemaal." },
+      { spreker: "A", start: 10, eind: 20, tekst: "Ik begin met de begroting." },
+      { spreker: "B", start: 296, eind: 303, tekst: "De reserves zijn dit jaar gedaald." },
+    ] },
+    // Deel 2 begint op 300 s; de eerste vier seconden zijn de overlap.
+    { volgnummer: 2, begin: 300, duur: 300, segmenten: [
+      { spreker: "A", start: 0, eind: 3, tekst: "reserves zijn dit jaar gedaald" },
+      { spreker: "A", start: 6, eind: 12, tekst: "En daarom stel ik voor het noodfonds te verhogen." },
+      { spreker: "B", start: 20, eind: 25, tekst: "Daar ben ik het niet mee eens." },
+    ] },
+  ], "Abdelkader");
+  const wie = (t: string) => s.find((x) => x.tekst.startsWith(t))?.spreker;
+  assertEquals(wie("Welkom"), "Abdelkader");
+  assertEquals(wie("Ik begin"), "Spreker A");
+  assertEquals(wie("De reserves"), "Spreker B");
+  // "A" in deel 2 is dezelfde als "B" in deel 1: zij sprak over de naad heen.
+  assertEquals(wie("En daarom"), "Spreker B");
+  // "B" in deel 2 is niet te koppelen en krijgt een eigen letter, niet die van een ander.
+  assertEquals(wie("Daar ben"), "Spreker C");
+  assertEquals(s.filter((x) => x.tekst.includes("gedaald")).length, 1, "de zin uit de overlap staat er één keer");
+});
+
+Deno.test("koppelSprekers: zonder sprekers (Mistral) alleen de dubbele zin eruit", () => {
+  const s = koppelSprekers([
+    { volgnummer: 1, begin: 0, duur: 304, segmenten: [{ spreker: null, start: 290, eind: 303, tekst: "We sluiten dit punt af en gaan verder." }] },
+    { volgnummer: 2, begin: 300, duur: 60, segmenten: [{ spreker: null, start: 0, eind: 3, tekst: "dit punt af en gaan verder" }, { spreker: null, start: 5, eind: 9, tekst: "Agendapunt vier." }] },
+  ], "Abdelkader");
+  assertEquals(s.map((x) => x.tekst), ["We sluiten dit punt af en gaan verder.", "Agendapunt vier."]);
+  assertEquals(s.every((x) => x.spreker === null), true);
+});
+
+Deno.test("noemSprekers: alleen bij een bekende naam, en het label blijft zichtbaar", () => {
+  const t = "[0:10] Spreker A: Ik begin.\n[0:20] Spreker B: Goed.\n[0:30] Spreker AB: Ook.";
+  const uit = noemSprekers(t, [{ label: "Spreker A", naam: "Jan", rol: "penningmeester" }, { label: "Spreker B", naam: "", rol: "" }]);
+  assertEquals(uit, "[0:10] Jan (spreker A): Ik begin.\n[0:20] Spreker B: Goed.\n[0:30] Spreker AB: Ook.");
+});

@@ -184,6 +184,11 @@ export function NotitieDetail() {
       {r && (
         <article className="kaart verslag">
           {r.samenvatting.split(/\n\s*\n/).map((p, i) => <p key={i}>{p}</p>)}
+          {(r.sprekers ?? []).some((x) => x.naam) && (
+            <p className="mini" style={{ margin: "0 0 0.8rem" }}>
+              Sprekers: {(r.sprekers ?? []).filter((x) => x.naam).map((x) => `${x.naam}${x.rol ? `, ${x.rol}` : ""} (${x.label.replace("Spreker", "spreker")})`).join(" · ")}
+            </p>
+          )}
           {(r.presentaties ?? []).map((p, i) => (
             <section key={i} className="presentatie">
               <h3>{p.onderwerp || "Presentatie"}</h3>
