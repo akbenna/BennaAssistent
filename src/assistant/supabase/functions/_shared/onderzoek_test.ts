@@ -98,6 +98,34 @@ Deno.test("zoekOpWeb: OpenAI valt uit, Claude pauzeert en antwoordt dan via het 
     assertEquals(verzoeken[1].messages[1].role, "assistant");
     assertEquals(verzoeken[0].tools[0].type, "web_search_20260209");
     assertEquals(verzoeken[0].tool_choice, { type: "auto" });
+    // Laag niveau van nadenken, anders past een verkenning niet in één ronde.
+    assertEquals(verzoeken[0].output_config, { effort: "low" });
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+Deno.test("OpenAI: vraagt het model om verificatie, dan één keer opnieuw met een model zonder", async () => {
+  Deno.env.set("OPENAI_API_KEY", "x");
+  const orig = globalThis.fetch;
+  const modellen: string[] = [];
+  globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+    const m = JSON.parse(String(init?.body)).model;
+    modellen.push(m);
+    if (m === "gpt-5-mini") return new Response(JSON.stringify({ error: { message: "Your organization must be verified to use the model `gpt-5-mini`." } }), { status: 404 });
+    return new Response(JSON.stringify({ output_text: "{\"a\":1}", usage: {} }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const { openaiResponses } = await import("./diensten.ts");
+    const data = await openaiResponses("https://api.openai.com/v1", { model: "gpt-5-mini", input: [] });
+    assertEquals(modellen, ["gpt-5-mini", "gpt-4.1-mini"]);
+    assertEquals(data.output_text, "{\"a\":1}");
+    // Een andere fout gaat niet naar de terugval: die is echt.
+    modellen.length = 0;
+    globalThis.fetch = (async () => new Response("rate limited", { status: 429 })) as typeof fetch;
+    let fout = "";
+    try { await openaiResponses("https://api.openai.com/v1", { model: "gpt-5-mini", input: [] }); } catch (e) { fout = String(e); }
+    assertStringIncludes(fout, "OpenAI 429");
   } finally {
     globalThis.fetch = orig;
   }

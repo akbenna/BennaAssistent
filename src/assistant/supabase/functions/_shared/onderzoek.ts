@@ -67,10 +67,10 @@ const themaSchema = {
   required: ["titel", "kern", "wat_gepresenteerd", "relevantie", "waarom", "soort", "bronnen"],
   properties: {
     titel: { type: "string", description: "Kort en specifiek, met de naam van de trial of richtlijn als die er is." },
-    kern: { type: "string", description: "Eén of twee zinnen: waar gaat het over." },
-    wat_gepresenteerd: { type: "string", description: "Wat er gepresenteerd of gepubliceerd is, met de cijfers zoals de bron ze geeft. Staat er geen uitkomst in de bron, zeg dat." },
+    kern: { type: "string", description: "Eén zin: waar gaat het over." },
+    wat_gepresenteerd: { type: "string", description: "Hooguit drie zinnen: wat er gepresenteerd of gepubliceerd is, met de belangrijkste cijfers zoals de bron ze geeft. Staat er geen uitkomst in de bron, zeg dat." },
     relevantie: { type: "string", enum: RELEVANTIES },
-    waarom: { type: "string", description: "Waarom dit wel of niet ertoe doet voor een huisarts en kaderarts hart- en vaatziekten in Nederland." },
+    waarom: { type: "string", description: "Eén of twee zinnen: waarom dit wel of niet ertoe doet voor een huisarts en kaderarts hart- en vaatziekten in Nederland." },
     soort: { type: "string", enum: SOORTEN },
     bronnen: { ...bronSchema, description: "Minstens één pagina waar dit staat." },
   },
@@ -81,8 +81,8 @@ export const verkenSchema = {
   additionalProperties: false,
   required: ["overzicht", "themas"],
   properties: {
-    overzicht: { type: "string", description: "Twee tot vier alinea's lopende tekst: welk congres, wanneer en waar, wat het in grote lijnen opleverde voor de eerste lijn. Of: dat het nog moet plaatsvinden en wat er op het programma staat." },
-    themas: { type: "array", items: themaSchema, description: "Acht tot vijftien thema's, de meest relevante eerst." },
+    overzicht: { type: "string", description: "Eén of twee alinea's lopende tekst: welk congres, wanneer en waar, wat het in grote lijnen opleverde voor de eerste lijn. Of: dat het nog moet plaatsvinden en wat er op het programma staat." },
+    themas: { type: "array", items: themaSchema, description: "Acht tot twaalf thema's, de meest relevante eerst." },
   },
 };
 
@@ -160,7 +160,7 @@ export function verkenPrompt(o: { onderwerp: string; url: string | null; focus: 
 Je bent zijn onderzoeksassistent. Je verkent een congres of evenement en legt hem thema's voor, zodat hij kan kiezen wat hij uitgewerkt wil hebben.
 
 Zoek naar: het wetenschappelijke programma, de hotline- en late-breaking sessies, nieuwe richtlijnen die er gepresenteerd werden, gelijktijdige publicaties (NEJM, Lancet, JAMA, EHJ, BMJ), en verslagen op betrouwbare plaatsen (de site van het congres zelf, tijdschriften, tctmd, medscape, healio, escardio.org, nhg.org, hartstichting.nl, cardiovascular nieuws).
-Kies acht tot vijftien thema's. De meest relevante eerst. Neem ook thema's op die minder relevant zijn als ze veel aandacht kregen, maar geef ze dan relevantie laag en zeg waarom.
+Kies acht tot twaalf thema's en houd elk thema beknopt: de uitwerking komt later, als hij kiest. De meest relevante eerst. Neem ook thema's op die minder relevant zijn als ze veel aandacht kregen, maar geef ze dan relevantie laag en zeg waarom.
 
 ${REGELS}`,
     gebruiker: `Congres of evenement: ${o.onderwerp}${o.url ? `\nWebsite: ${o.url}` : ""}${o.focus ? `\nWaar hij in het bijzonder naar zoekt: ${o.focus}` : ""}\nVandaag is het ${o.vandaag}.`,

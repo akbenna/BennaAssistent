@@ -66,6 +66,32 @@ export const tekstModel = (d: TekstDienst): string =>
 
 export const openaiBasis = () => env("OPENAI_BASE_URL", "https://eu.api.openai.com/v1").replace(/\/$/, "");
 
+/**
+ * Sommige modellen vragen dat de OpenAI-organisatie geverifieerd is. Zolang
+ * dat niet zo is, zou alles stilletjes naar de uitval gaan. Daarom één keer
+ * opnieuw met een model dat geen verificatie vraagt.
+ */
+export const OPENAI_TERUGVAL = () => env("OPENAI_FALLBACK_MODEL", "gpt-4.1-mini");
+export const vraagtVerificatie = (status: number, tekst: string) =>
+  (status === 403 || status === 404) && /must be verified|verify organization/i.test(tekst);
+
+/** Een Responses-aanroep met de terugval op een model zonder verificatie. */
+export async function openaiResponses(basis: string, lichaam: Record<string, unknown>, signal?: AbortSignal): Promise<any> {
+  const doe = (model: string) => fetch(`${basis}/responses`, {
+    method: "POST", signal,
+    headers: { Authorization: `Bearer ${env("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...lichaam, model }),
+  });
+  let r = await doe(String(lichaam.model));
+  if (!r.ok) {
+    const t = await r.text();
+    if (vraagtVerificatie(r.status, t) && OPENAI_TERUGVAL() !== lichaam.model) r = await doe(OPENAI_TERUGVAL());
+    else throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
+  }
+  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  return await r.json();
+}
+
 /** Het antwoord van de Responses-API kan op twee plekken tekst dragen. */
 export function leesResponsTekst(data: any): string {
   if (typeof data?.output_text === "string" && data.output_text) return data.output_text;
@@ -96,17 +122,11 @@ export interface Vraag {
 async function viaOpenAI(v: Vraag): Promise<{ ruw: unknown; verbruik: Verbruik }> {
   const inhoud: unknown[] = [{ type: "input_text", text: v.gebruiker }];
   if (v.afbeelding) inhoud.push({ type: "input_image", image_url: `data:${v.afbeelding.mime};base64,${v.afbeelding.base64}` });
-  const r = await fetch(`${openaiBasis()}/responses`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: tekstModel("openai"),
-      input: [{ role: "system", content: v.systeem }, { role: "user", content: inhoud }],
-      text: { format: { type: "json_schema", name: v.naam, schema: v.schema, strict: true } },
-    }),
+  const data = await openaiResponses(openaiBasis(), {
+    model: tekstModel("openai"),
+    input: [{ role: "system", content: v.systeem }, { role: "user", content: inhoud }],
+    text: { format: { type: "json_schema", name: v.naam, schema: v.schema, strict: true } },
   });
-  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const data = await r.json();
   return {
     ruw: JSON.parse(leesResponsTekst(data)),
     verbruik: { invoer: Number(data.usage?.input_tokens ?? 0), uitvoer: Number(data.usage?.output_tokens ?? 0) },

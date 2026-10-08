@@ -21,7 +21,14 @@ Zoeken op het web gaat bij OpenAI via het gereedschap `web_search` van de
 Responses-API, op hetzelfde adres als de rest (`OPENAI_WEB_BASE_URL` kan het
 apart zetten, `OPENAI_WEB_MODEL` het model). Weigert het EU-project dat, dan
 neemt Claude het over met `web_search_20260209` (`CLAUDE_WEB_MODEL`, standaard
-het schrijfmodel). Beide rekenen per zoekopdracht plus de gelezen tekst.
+Claude Sonnet 5.5, op een laag niveau van nadenken via `CLAUDE_WEB_EFFORT`, zodat
+een stap binnen de tweeënhalve minuut van een Edge Function blijft). Beide
+rekenen per zoekopdracht plus de gelezen tekst.
+
+Vraagt een OpenAI-model om een geverifieerde organisatie, dan probeert de
+assistent het één keer opnieuw met `OPENAI_FALLBACK_MODEL` (standaard
+`gpt-4.1-mini`), voor samenvatten en zoeken. Verifieer je de organisatie bij
+OpenAI, dan draait het weer op het ingestelde model.
 
 ## Prijzen, stand oktober 2026
 
