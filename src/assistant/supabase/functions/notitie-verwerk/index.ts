@@ -31,7 +31,7 @@ import { schrijfUit } from "../_shared/spraak.ts";
 import { vatSamen } from "../_shared/samenvatten.ts";
 import { leesFoto, verdiep } from "../_shared/bronnen.ts";
 import {
-  docHtml, GEEN_PROJECT, koppelSprekers, maakTranscript, noemSprekers, SOORTEN, verzamelBronnen,
+  docHtml, GEEN_PROJECT, koppelSprekers, leesAantekeningen, maakTranscript, noemSprekers, SOORTEN, verzamelBronnen,
   type FotoAnalyse, type FotoVoorPrompt, type RuwSegment, type Segment, type Soort, type Uitkomst, type Verdieping,
 } from "../_shared/notities.ts";
 
@@ -300,10 +300,11 @@ async function vatNotitieSamen(admin: Admin, n: any) {
     .map((f) => ({ volgnummer: f.volgnummer, moment: f.moment_sec, analyse: f.lezing }));
   const markeringen = (Array.isArray(n.markeringen) ? n.markeringen : []).map(Number).filter(Number.isFinite);
   const soort: Soort = SOORTEN.includes(n.soort) ? n.soort : "vergadering";
+  const aantekeningen = leesAantekeningen(n.aantekeningen);
 
   const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
   const { uitkomst: r, dienst, verbruik, uitval } = await vatSamen({
-    transcript, mijnNaam: inst.mijn_naam, datum, soort, fotos, markeringen,
+    transcript, mijnNaam: inst.mijn_naam, datum, soort, fotos, markeringen, aantekeningen,
     projecten: vast ? [vast] : projecten,
     agendaTitel: agenda?.titel ?? null, deelnemers: agenda?.deelnemers ?? [],
     projectHint: hint?.naam ?? null, bestandsnaam: (n.modellen?.bestandsnaam as string | undefined) ?? null,
@@ -332,7 +333,7 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   let docId: string | null = n.drive_doc_id ?? null;
   try {
     const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: project?.naam ?? null, agendaTitel: agenda?.titel ?? null, transcript }), project?.naam ?? null, docId);
+    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: project?.naam ?? null, agendaTitel: agenda?.titel ?? null, transcript, aantekeningen }), project?.naam ?? null, docId);
     delete modellen.drive_fout;
   } catch (e) {
     modellen.drive_fout = e instanceof GoogleError && e.status === 403
@@ -415,7 +416,7 @@ async function verdiepNotitie(admin: Admin, n: any) {
     const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
     const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
     const { data: p } = n.project_id ? await admin.from("projects").select("naam").eq("id", n.project_id).maybeSingle() : { data: null };
-    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: p?.naam ?? null, agendaTitel: n.agenda_titel, transcript: n.transcript ?? "", verdieping }), p?.naam ?? null, docId);
+    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: p?.naam ?? null, agendaTitel: n.agenda_titel, transcript: n.transcript ?? "", verdieping, aantekeningen: leesAantekeningen(n.aantekeningen) }), p?.naam ?? null, docId);
   } catch (e) {
     modellen.drive_fout = String(e).slice(0, 300);
   }

@@ -10,7 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { supabase } from "./supabase";
 import { verwerkOpnames, voegFotoToe } from "./data";
 import { verklein } from "./beeld";
-import type { OpnameSoort } from "../types/db";
+import type { Aantekening, OpnameSoort } from "../types/db";
 import { Opnemer } from "./opnemer";
 
 export type Fase = "klaar" | "bezig" | "afronden";
@@ -31,6 +31,9 @@ interface OpnameStand {
   /** Een foto van een slide, met het moment in de opname erbij. */
   foto: (bestand: Blob) => Promise<void>;
   fotos: number;
+  /** Wat je zelf typt tijdens de opname; weegt zwaarder dan het transcript. */
+  noteer: (tekst: string) => void;
+  aantekeningen: Aantekening[];
 }
 
 const Ctx = createContext<OpnameStand | null>(null);
@@ -53,6 +56,8 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
   const markeringenRef = useRef<number[]>([]);
   const [markeringen, setMarkeringen] = useState(0);
   const [fotos, setFotos] = useState(0);
+  const aantekeningenRef = useRef<Aantekening[]>([]);
+  const [aantekeningen, setAantekeningen] = useState<Aantekening[]>([]);
   const kanOpnemen = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
   useEffect(() => {
@@ -95,6 +100,8 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
     eigenaar.current = uid;
     markeringenRef.current = [];
     setMarkeringen(0);
+    aantekeningenRef.current = [];
+    setAantekeningen([]);
     setFotos(0);
     setNotitieId(id);
     setSeconden(0);
@@ -137,6 +144,17 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
     supabase.from("notities").update({ markeringen: markeringenRef.current }).eq("id", id).then(() => {}, () => {});
   }, [notitieId]);
 
+  const noteer = useCallback((tekst: string) => {
+    const o = opnemer.current;
+    const id = notitieId;
+    const t = tekst.trim();
+    if (!o || !id || !t) return;
+    aantekeningenRef.current = [...aantekeningenRef.current, { moment: Math.round(o.seconden), tekst: t.slice(0, 1000) }];
+    setAantekeningen(aantekeningenRef.current);
+    // Net als bij de markeringen: steeds de hele lijst.
+    supabase.from("notities").update({ aantekeningen: aantekeningenRef.current }).eq("id", id).then(() => {}, () => {});
+  }, [notitieId]);
+
   const foto = useCallback(async (bestand: Blob) => {
     const o = opnemer.current;
     const id = notitieId;
@@ -153,7 +171,7 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
   }, [notitieId]);
 
   return (
-    <Ctx.Provider value={{ fase, seconden, niveau, wachtrij, melding, notitieId, kanOpnemen, begin, stop, markeer, markeringen, foto, fotos }}>
+    <Ctx.Provider value={{ fase, seconden, niveau, wachtrij, melding, notitieId, kanOpnemen, begin, stop, markeer, markeringen, foto, fotos, noteer, aantekeningen }}>
       {children}
     </Ctx.Provider>
   );

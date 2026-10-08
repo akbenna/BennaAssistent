@@ -8,7 +8,9 @@ import { OpnameKnop } from "../components/Opname";
 import { TaakKaart } from "../components/TaakKaart";
 import { TaakPaneel } from "../components/TaakPaneel";
 import { datumKort, datumLang, deadlineToon, relatief, tijdKort, vandaag } from "../lib/format";
-import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalOpnames, haalTaken, haalTellingen, haalWeekoverzicht } from "../lib/data";
+import { haalAfrondingenPerDag, haalDagoverzicht, haalDocumenten, haalOpnames, haalProjecten, haalTaken, haalTellingen, haalVoorbereiding, haalWeekoverzicht } from "../lib/data";
+import { projectVoorAfspraak } from "../lib/voorbereiding";
+import type { Project } from "../types/db";
 
 /* De groet volgt het uur in Amsterdam en niet dat van de browser: wie vanuit
    een andere tijdzone inlogt kijkt naar een Nederlandse werkdag. */
@@ -36,6 +38,8 @@ export function Vandaag() {
     [ronde],
   );
   const antwoorden = useAsync(() => haalTaken({ statussen: ["antwoord_binnen"], limiet: 25 }), [ronde]);
+  const projecten = useAsync(() => haalProjecten(), []);
+  const [voorbereid, setVoorbereid] = useState<string | null>(null);
   const naTeLezen = useAsync(() => haalOpnames({ statussen: ["gereed", "geweigerd"], limiet: 5 }), [ronde]);
 
   const ververs = () => setRonde((r) => r + 1);
@@ -141,15 +145,28 @@ export function Vandaag() {
               Agenda kon niet worden gelezen: {overzicht.data.afspraken_fout}
             </p>
           )}
-          {afspraken.map((a, i) => (
-            <div className="brief-regel" key={`${a.start ?? i}-${a.titel}`}>
-              <span className="tijd">{tijdKort(a.start)}</span>
-              <span className="groei">
-                {a.link ? <a href={a.link} target="_blank" rel="noreferrer">{a.titel}</a> : a.titel}
-                {a.locatie && <span className="mini"> · {a.locatie}</span>}
-              </span>
-            </div>
-          ))}
+          {afspraken.map((a, i) => {
+            const sleutel = `${a.start ?? i}-${a.titel}`;
+            const project = projectVoorAfspraak(projecten.data ?? [], a.titel);
+            const uitgeklapt = voorbereid === sleutel;
+            return (
+              <div key={sleutel}>
+                <div className="brief-regel">
+                  <span className="tijd">{tijdKort(a.start)}</span>
+                  <span className="groei">
+                    {a.link ? <a href={a.link} target="_blank" rel="noreferrer">{a.titel}</a> : a.titel}
+                    {a.locatie && <span className="mini"> · {a.locatie}</span>}
+                    {project && <span className="mini"> · {project.naam}</span>}
+                  </span>
+                  <button type="button" className="knop klein" aria-expanded={uitgeklapt}
+                    onClick={() => setVoorbereid(uitgeklapt ? null : sleutel)}>
+                    {uitgeklapt ? "Sluit" : "Voorbereiden"}
+                  </button>
+                </div>
+                {uitgeklapt && <VoorbereidingKaart titel={a.titel} project={project} />}
+              </div>
+            );
+          })}
           {overzicht.data && afspraken.length === 0 && !overzicht.data.afspraken_fout && (
             <p className="mini" style={{ margin: 0 }}>Geen afspraken vandaag.</p>
           )}
@@ -314,5 +331,48 @@ function Weekstart({ w, bijOpenen }: { w: Weekoverzicht; bijOpenen: (id: string)
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Wat er de vorige keer gebeurde, opgezocht en niet samengevat. Onderaan de
+ * knop die de opname meteen aan het goede project hangt.
+ */
+function VoorbereidingKaart({ titel, project }: { titel: string; project: Project | null }) {
+  const v = useAsync(() => haalVoorbereiding({ projectId: project?.id ?? null, titel }), [project?.id, titel]);
+  const lijst = (kop: string, regels: string[]) => regels.length > 0 && (
+    <div className="voorbereiding-blok">
+      <h3>{kop}</h3>
+      <ul>{regels.map((r, i) => <li key={i}>{r}</li>)}</ul>
+    </div>
+  );
+  return (
+    <div className="voorbereiding">
+      {v.laden && <Skelet aantal={1} />}
+      {v.fout && <Fout tekst={v.fout} opnieuw={v.herlaad} />}
+      {v.data && !v.data.vorige && (
+        <p className="mini" style={{ margin: 0 }}>
+          {project ? `Nog geen eerdere notities bij ${project.naam}.` : "Geen eerder overleg met deze titel gevonden, en de afspraak hoort niet herkenbaar bij een project."}
+        </p>
+      )}
+      {v.data?.vorige && (
+        <>
+          <p className="mini" style={{ margin: 0 }}>
+            Vorige keer: <Link to={`/notities/${v.data.vorige.id}`}>{v.data.vorige.titel}</Link>, {datumKort(v.data.vorige.datum)}
+            {v.data.aantalNotities > 1 && ` (en ${v.data.aantalNotities - 1} eerder)`}
+          </p>
+          {lijst("Besloten", v.data.besluiten)}
+          {lijst("Nog open", v.data.open_vragen)}
+          {lijst("Wat jij zou doen", v.data.mijn_vervolgstappen)}
+          {v.data.taken.length > 0 && (
+            <div className="voorbereiding-blok">
+              <h3>Taken die nog lopen</h3>
+              <ul>{v.data.taken.map((t) => <li key={t.id}>{t.titel}{t.status === "voorstel" ? <span className="mini"> · voorstel</span> : t.deadline ? <span className="mini"> · {datumKort(t.deadline)}</span> : null}</li>)}</ul>
+            </div>
+          )}
+        </>
+      )}
+      <OpnameKnop projectId={project?.id ?? null} compact />
+    </div>
   );
 }
