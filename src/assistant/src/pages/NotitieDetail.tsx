@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Fout, Merkje, Skelet, useAsync, useMelding } from "../components/ui";
 import { duur } from "../components/Opname";
@@ -7,12 +7,20 @@ import { STATUS_TEKST } from "../components/TaakKaart";
 import { useSessie } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 import {
-  haalOpname, haalOpnameInstellingen, haalProjecten, haalTakenVanOpname, maakTaakUitOpname,
+  haalFotos, haalOpname, haalOpnameInstellingen, haalProjecten, haalTakenVanOpname, maakTaakUitOpname, voegFotoToe,
   notitieActie, verwerkOpnames, verwijderOpname, werkOpnameBij,
 } from "../lib/data";
 import { datumKort, datumLang, tijdKort } from "../lib/format";
-import { OPNAME_STATUS } from "./Notities";
-import type { Opname, OpnameStatus } from "../types/db";
+import { verklein } from "../lib/beeld";
+import { regelBij } from "../lib/transcript";
+import { OPNAME_STATUS, SOORT_TEKST } from "./Notities";
+import type { Foto, Oordeel, Opname, OpnameSoort, OpnameStatus } from "../types/db";
+
+const OORDEEL_KLEUR: Record<Oordeel, "groen" | "amber" | "rood" | undefined> = {
+  bevestigd: "groen", genuanceerd: "amber", afwijkend: "rood", "niet te beoordelen": undefined,
+};
+
+
 
 const BEZIG: OpnameStatus[] = ["opname", "verwerken", "samenvatten", "bezig"];
 
@@ -38,14 +46,18 @@ export function NotitieDetail() {
   const n = useAsync(() => haalOpname(id), [id, ronde]);
   const projecten = useAsync(() => haalProjecten(), []);
   const taken = useAsync(() => haalTakenVanOpname(n.data?.item_id ?? null), [n.data?.item_id, ronde]);
+  const fotos = useAsync(() => haalFotos(id), [id, ronde]);
+  const fotoKiezer = useRef<HTMLInputElement>(null);
 
   const notitie = n.data;
   useEffect(() => { if (notitie) setTitel((t) => t || notitie.titel || ""); }, [notitie]);
+  const fotoBezig = (fotos.data ?? []).some((f) => f.status === "klaar" || f.status === "bezig");
+  const verdiepBezig = notitie?.verdieping_status === "gevraagd" || notitie?.verdieping_status === "bezig";
   useEffect(() => {
-    if (!notitie || !BEZIG.includes(notitie.status)) return;
+    if (!notitie || (!BEZIG.includes(notitie.status) && !verdiepBezig && !fotoBezig)) return;
     const t = window.setInterval(() => setRonde((r) => r + 1), 5000);
     return () => window.clearInterval(t);
-  }, [notitie]);
+  }, [notitie, verdiepBezig, fotoBezig]);
 
   if (n.laden && !notitie) return <Skelet />;
   if (n.fout) return <Fout tekst={n.fout} opnieuw={n.herlaad} />;
@@ -86,6 +98,22 @@ export function NotitieDetail() {
     });
     if (notitie.transcript) await verwerkOpnames();
   });
+  const kiesSoort = (soort: OpnameSoort) => doe(async () => {
+    await werkOpnameBij(notitie.id, {
+      soort,
+      ...(notitie.transcript && !BEZIG.includes(notitie.status) && notitie.status !== "geweigerd" ? { status: "samenvatten" as const } : {}),
+    });
+    if (notitie.transcript) await verwerkOpnames();
+  }, "Wordt opnieuw samengevat.");
+  const fotoAchteraf = (f: File) => doe(async () => {
+    if (!sessie) return;
+    await voegFotoToe(notitie.id, sessie.user.id, await verklein(f), null);
+    await verwerkOpnames();
+  }, "Foto toegevoegd. Hij wordt gelezen; kies daarna Opnieuw samenvatten om hem mee te nemen.");
+  const verdiepen = () => doe(async () => {
+    await notitieActie(notitie.id, "verdiep");
+    await verwerkOpnames();
+  }, "De bronnen worden nagezocht. Dat duurt een minuut of twee.");
   const verwijder = () => {
     if (!sessie || !confirm("Notitie, audio en transcript verwijderen? Taken die eruit voortkwamen en het Google Doc blijven staan.")) return;
     void doe(async () => { await verwijderOpname(notitie, sessie.user.id); naar("/notities"); });
@@ -111,7 +139,13 @@ export function NotitieDetail() {
         {notitie.agenda_titel ? ` · agenda: ${notitie.agenda_titel}` : ""}
       </p>
 
-      <div className="kaart" style={{ marginBottom: "0.8rem" }}>
+      <div className="kaart rij2" style={{ marginBottom: "0.8rem" }}>
+        <label className="veld" style={{ marginBottom: 0 }}>
+          <span>Soort</span>
+          <select value={notitie.soort} onChange={(e) => void kiesSoort(e.target.value as OpnameSoort)} disabled={bezig || BEZIG.includes(notitie.status)}>
+            {(Object.keys(SOORT_TEKST) as OpnameSoort[]).map((s) => <option key={s} value={s}>{SOORT_TEKST[s]}</option>)}
+          </select>
+        </label>
         <label className="veld" style={{ marginBottom: 0 }}>
           <span>Project</span>
           <select value={notitie.project_id ?? ""} onChange={(e) => void kiesProject(e.target.value)} disabled={bezig || BEZIG.includes(notitie.status)}>
@@ -150,6 +184,16 @@ export function NotitieDetail() {
       {r && (
         <article className="kaart verslag">
           {r.samenvatting.split(/\n\s*\n/).map((p, i) => <p key={i}>{p}</p>)}
+          {(r.presentaties ?? []).map((p, i) => (
+            <section key={i} className="presentatie">
+              <h3>{p.onderwerp || "Presentatie"}</h3>
+              <p className="mini" style={{ margin: "0 0 0.3rem" }}>{p.spreker}</p>
+              {p.kernboodschappen.length > 0 && <ul>{p.kernboodschappen.map((k, j) => <li key={j}>{k}</li>)}</ul>}
+              {p.onderbouwing.length > 0 && <><p className="opschrift" style={{ margin: "0.5rem 0 0.2rem" }}>Onderbouwing</p><ul>{p.onderbouwing.map((k, j) => <li key={j}>{k}</li>)}</ul></>}
+            </section>
+          ))}
+          {r.relevantie_praktijk && <><h3>Relevantie voor de praktijk</h3><p>{r.relevantie_praktijk}</p></>}
+          <Opsomming kop="Kanttekeningen" items={r.kanttekeningen ?? []} />
           <Opsomming kop="Besluiten" items={r.besluiten} />
 
           {r.actiepunten.length > 0 && (
@@ -215,6 +259,93 @@ export function NotitieDetail() {
             </>
           )}
         </article>
+      )}
+
+      {((fotos.data ?? []).length > 0 || notitie.soort === "congres") && (
+        <section className="sectie">
+          <header>
+            <h2>Slides en foto's</h2>
+            <button type="button" className="knop klein" onClick={() => fotoKiezer.current?.click()} disabled={bezig}>Foto toevoegen</button>
+            <input ref={fotoKiezer} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void fotoAchteraf(f); }} />
+          </header>
+          <div className="fotorij">
+            {(fotos.data ?? []).map((f: Foto) => (
+              <figure key={f.id} className="foto">
+                {f.url ? <a href={f.url} target="_blank" rel="noreferrer"><img src={f.url} alt={`Slide ${f.volgnummer}`} loading="lazy" /></a> : <div className="fotoleeg" />}
+                <figcaption className="mini">
+                  <b>{f.moment_sec != null ? duur(f.moment_sec) : "achteraf"}</b>{" "}
+                  {f.status === "gereed" ? f.lezing?.kern
+                    : f.status === "geweigerd" ? "Niet gelezen: mogelijk patiëntgegevens."
+                    : f.status === "fout" ? "Kon niet worden gelezen."
+                    : "Wordt gelezen…"}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          {(fotos.data ?? []).length === 0 && <p className="mini">Nog geen foto's. Tijdens de opname maak je ze met de knop Slide bovenaan.</p>}
+        </section>
+      )}
+
+      {r && (r.bronnen ?? []).length > 0 && (
+        <section className="sectie">
+          <header><h2>Bronnen</h2><span className="aantal">{r.bronnen?.length}</span></header>
+          {!notitie.verdieping && !verdiepBezig && (
+            <div className="kaart vraagkaart">
+              <p className="klein" style={{ marginTop: 0 }}>
+                {r.bronnen!.length === 1 ? "Er werd één bron genoemd" : `Er werden ${r.bronnen!.length} bronnen genoemd`}, op de slides of in het gesprek.
+                Zal ik ze opzoeken in PubMed en de notitie aanvullen met wat de studies werkelijk vonden?
+              </p>
+              <button type="button" className="knop primair klein" onClick={() => void verdiepen()} disabled={bezig}>Ja, zoek ze na</button>
+              {notitie.verdieping_status === "fout" && <p className="mini" style={{ color: "var(--fout)" }}>Vorige poging mislukt: {notitie.modellen.verdieping_fout}</p>}
+            </div>
+          )}
+          {verdiepBezig && <div className="kaart"><Merkje kleur="blauw">Bronnen worden nagezocht…</Merkje></div>}
+          {notitie.verdieping ? (
+            <div className="kaart verslag">
+              {notitie.verdieping.duiding.split(/\n\s*\n/).filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+              <ol className="bronlijst">
+                {notitie.verdieping.bronnen.map((b, i) => (
+                  <li key={i}>
+                    <div><Merkje kleur={OORDEEL_KLEUR[b.oordeel]}>{b.oordeel}</Merkje> <span className="mini">{b.herkomst}</span></div>
+                    <p className="klein" style={{ margin: "0.3rem 0" }}><i>Bewering:</i> {b.bewering}</p>
+                    {b.bevindingen && <p className="klein" style={{ margin: "0.3rem 0" }}><i>De studie:</i> {b.bevindingen}</p>}
+                    {b.toelichting && <p className="mini" style={{ margin: "0.2rem 0" }}>{b.toelichting}</p>}
+                    <p className="mini" style={{ margin: "0.2rem 0 0" }}>
+                      {b.gegevens?.url ? <a href={b.gegevens.url} target="_blank" rel="noreferrer">{b.citaat}</a> : "Niet gevonden in PubMed."}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+              <p className="mini">Nagezocht met {notitie.verdieping.dienst}. De oordelen gaan alleen over het abstract; lees bij twijfel het artikel zelf.</p>
+            </div>
+          ) : (
+            <div className="kaart">
+              <ol className="bronlijst">
+                {r.bronnen!.map((b, i) => (
+                  <li key={i} className="klein">
+                    {[b.auteurs, b.omschrijving, b.tijdschrift, b.jaar].filter(Boolean).join(". ")}
+                    {b.doi && <> · <a href={`https://doi.org/${b.doi}`} target="_blank" rel="noreferrer">doi</a></>}
+                    <span className="mini"> ({b.herkomst})</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </section>
+      )}
+
+      {notitie.markeringen.length > 0 && notitie.transcript && (
+        <section className="sectie">
+          <header><h2>Gemarkeerde momenten</h2></header>
+          <div className="kaart">
+            {notitie.markeringen.map((m, i) => (
+              <div className="brief-regel" key={i}>
+                <span className="tijd">{duur(m)}</span>
+                <span className="groei klein">{regelBij(notitie.transcript ?? "", m).replace(/^\[[^\]]+\]\s*/, "") || "…"}</span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       {notitie.transcript && (

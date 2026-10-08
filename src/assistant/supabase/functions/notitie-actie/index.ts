@@ -11,6 +11,11 @@
  *   notitie én in het logboek, en pas dan gaat het transcript naar het
  *   taalmodel. Het filter zelf blijft staan zoals het staat.
  *
+ * - verdiep: de bronnen die op de slides stonden of in het gesprek werden
+ *   genoemd nazoeken in PubMed, en de notitie aanvullen met wat de studies
+ *   werkelijk vonden. Alleen op verzoek: het kost een paar modelaanroepen, en
+ *   bij een vergadering zonder studies heeft het geen zin.
+ *
  * Taken maken gebeurt in de app zelf: daar gelden de gewone regels van de
  * takentabel, en die zijn hier niet nodig.
  */
@@ -35,6 +40,15 @@ Deno.serve(async (req) => {
       status: "samenvatten", privacy_bevestigd_op: new Date().toISOString(), audio_verwijderen_na: null,
     }).eq("id", n.id);
     await audit(admin, uid, "notitie_privacy_bevestigd", { object_type: "notitie", object_id: n.id, details: { reden: n.privacy_reden } });
+    return json({ ok: true });
+  }
+
+  if (actie === "verdiep") {
+    const r = n.samenvatting as Uitkomst | null;
+    if (!r?.bronnen?.length) return json({ fout: "deze notitie noemt geen bronnen" }, 422);
+    if (n.verdieping_status === "gevraagd" || n.verdieping_status === "bezig") return json({ fout: "de bronnen worden al nagezocht" }, 409);
+    await admin.from("notities").update({ verdieping_status: "gevraagd" }).eq("id", n.id);
+    await audit(admin, uid, "notitie_verdieping_gevraagd", { object_type: "notitie", object_id: n.id, details: { bronnen: r.bronnen.length } });
     return json({ ok: true });
   }
 

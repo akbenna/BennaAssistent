@@ -115,7 +115,7 @@ Deno.test("samenvatten valt bij een storing van OpenAI terug op Claude, met hetz
   });
   try {
     const r = await vatSamen({ transcript: "[0:00] Abdelkader: Welkom.", mijnNaam: "Abdelkader", datum: "8 oktober 2026", projecten: [{ naam: "ASF Limburg" }] });
-    assert(r.dienst.startsWith("anthropic:"));
+    assert(r.dienst.startsWith("claude:"));
     assertEquals(r.uitkomst.project, "ASF Limburg");
     assertEquals(r.verbruik, { invoer: 10, uitvoer: 5 });
   } finally { nep.herstel(); }
@@ -135,4 +135,127 @@ Deno.test("samenvatten via OpenAI leest de strikte JSON", async () => {
     assertEquals(r.uitkomst.actiepunten[0]!.van_mij, true);
     assert(nep.gezien[0]!.startsWith("https://eu.api.openai.com/"), "standaard via de EU-endpoint");
   } finally { nep.herstel(); }
+});
+
+/* ------------------------------------------------------- de volgorde --- */
+
+import { opVolgorde, volgorde } from "./diensten.ts";
+import {
+  fotoSchema, leesPubmedXml, pubmedZoekterm, schoonDoi, trekFotoRecht, vancouver, verdiepSchema, verzamelBronnen,
+} from "./notities.ts";
+import { verdiep } from "./bronnen.ts";
+
+Deno.test("volgorde: uit de omgeving, alleen met sleutel, zonder dubbele of onbekende", () => {
+  Deno.env.set("OPENAI_API_KEY", "x");
+  Deno.env.set("MISTRAL_API_KEY", "y");
+  Deno.env.delete("ANTHROPIC_API_KEY");
+  Deno.env.set("TEKST_VOLGORDE", "mistral, onzin, openai, mistral, claude");
+  assertEquals(volgorde("TEKST_VOLGORDE", ["openai", "claude"], ["openai", "claude", "mistral"] as const), ["mistral", "openai"]);
+  Deno.env.delete("TEKST_VOLGORDE");
+  assertEquals(volgorde("TEKST_VOLGORDE", ["openai", "claude"], ["openai", "claude", "mistral"] as const), ["openai"],
+    "zonder variabele de standaard, en Claude valt af zonder sleutel");
+});
+
+Deno.test("opVolgorde: de eerste die lukt wint, en de uitval gaat mee", async () => {
+  const r = await opVolgorde(["a", "b", "c"], async (d) => { if (d === "a") throw new Error("plat"); return d; }, "geen");
+  assertEquals(r.uitkomst, "b");
+  assert(r.uitval?.includes("a: plat"));
+});
+
+/* --------------------------------------------------------- de bronnen --- */
+
+Deno.test("schoonDoi haalt de DOI uit een link en laat het leesteken erachter weg", () => {
+  assertEquals(schoonDoi("https://doi.org/10.1056/NEJMoa2307563."), "10.1056/nejmoa2307563");
+  assertEquals(schoonDoi("geen doi"), "");
+});
+
+Deno.test("verzamelBronnen: een bron op de slide en in het gesprek komt één keer", () => {
+  const b = verzamelBronnen(
+    [{ volgnummer: 2, moment: 754, analyse: { soort: "slide", kern: "Semaglutide verlaagt MACE met 20%.", tekst: "", cijfers: [],
+      referenties: [{ auteurs: "Lincoff AM", titel: "Semaglutide and Cardiovascular Outcomes in Obesity without Diabetes", tijdschrift: "N Engl J Med", jaar: "2023", doi: "10.1056/NEJMoa2307563", pmid: "" }] } }],
+    [
+      { omschrijving: "SELECT-trial", auteurs: "", jaar: "2023", tijdschrift: "", doi: "10.1056/nejmoa2307563", bewering: "Twintig procent minder hart- en vaatziekte." },
+      { omschrijving: "SCORE2-Diabetes", auteurs: "", jaar: "", tijdschrift: "", doi: "", bewering: "Beter dan SCORE2 bij diabetes." },
+    ],
+  );
+  assertEquals(b.length, 2);
+  assertEquals(b[0]!.herkomst, "slide 2 (12:34)");
+  assertEquals(b[0]!.bewering, "Twintig procent minder hart- en vaatziekte.", "de bewering uit het gesprek wint");
+  assertEquals(b[1]!.herkomst, "gesprek");
+});
+
+Deno.test("pubmedZoekterm: DOI als die er is, anders titelwoorden, auteur en jaar", () => {
+  assertEquals(pubmedZoekterm({ omschrijving: "x", auteurs: "", jaar: "", doi: "10.1/abc" }), "10.1/abc[doi]");
+  assertEquals(pubmedZoekterm({ omschrijving: "Semaglutide and Cardiovascular Outcomes", auteurs: "Lincoff AM et al", jaar: "2023", doi: "" }),
+    "(semaglutide cardiovascular outcomes) AND Lincoff[au] AND 2023[dp]");
+});
+
+const PUBMED_XML = `<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID Version="1">37952131</PMID><Article>
+<Journal><JournalIssue><PubDate><Year>2023</Year></PubDate></JournalIssue><Title>The New England journal of medicine</Title><ISOAbbreviation>N Engl J Med</ISOAbbreviation></Journal>
+<ArticleTitle>Semaglutide and Cardiovascular Outcomes in Obesity without Diabetes.</ArticleTitle>
+<Abstract><AbstractText Label="BACKGROUND">Semaglutide reduces weight.</AbstractText><AbstractText Label="RESULTS">MACE 6.5% vs 8.0%; HR 0.80 (95% CI 0.72 to 0.90).</AbstractText></Abstract>
+<AuthorList><Author><LastName>Lincoff</LastName><Initials>AM</Initials></Author><Author><LastName>Brown-Frandsen</LastName><Initials>K</Initials></Author></AuthorList>
+</Article></MedlineCitation><PubmedData><ArticleIdList><ArticleId IdType="doi">10.1056/NEJMoa2307563</ArticleId></ArticleIdList></PubmedData></PubmedArticle></PubmedArticleSet>`;
+
+Deno.test("leesPubmedXml en vancouver", () => {
+  const [g] = leesPubmedXml(PUBMED_XML);
+  assertEquals(g!.pmid, "37952131");
+  assertEquals(g!.doi, "10.1056/nejmoa2307563");
+  assertEquals(g!.auteurs, ["Lincoff AM", "Brown-Frandsen K"]);
+  assert(g!.abstract.includes("RESULTS: MACE 6.5% vs 8.0%"));
+  assertEquals(vancouver(g!), "Lincoff AM, Brown-Frandsen K. Semaglutide and Cardiovascular Outcomes in Obesity without Diabetes. N Engl J Med. 2023. doi:10.1056/nejmoa2307563 PMID: 37952131");
+});
+
+Deno.test("trekFotoRecht: geen verzonnen PMID of jaartal", () => {
+  const f = trekFotoRecht({ soort: "dia", kern: "K", tekst: "T", cijfers: ["HR 0,80"],
+    referenties: [{ auteurs: "Lincoff", titel: "", tijdschrift: "", jaar: "ca. 2023", doi: "", pmid: "onbekend" }, { auteurs: "", titel: "", tijdschrift: "", jaar: "", doi: "", pmid: "" }] });
+  assertEquals(f.soort, "overig");
+  assertEquals(f.referenties, [{ auteurs: "Lincoff", titel: "", tijdschrift: "", jaar: "2023", doi: "", pmid: "" }]);
+});
+
+Deno.test("foto- en verdiepschema voldoen aan strikte structured outputs", () => {
+  const streng = (o: any): boolean => o.type !== "object" || (o.additionalProperties === false
+    && Object.keys(o.properties).every((k) => o.required.includes(k))
+    && Object.values(o.properties).every((p: any) => streng(p.items ?? p)));
+  assert(streng(fotoSchema));
+  assert(streng(verdiepSchema));
+  assert(streng(schema(["x"])));
+});
+
+Deno.test("verdiep: de bron komt van PubMed, en zonder abstract is er geen oordeel", async () => {
+  Deno.env.set("OPENAI_API_KEY", "x");
+  Deno.env.delete("TEKST_VOLGORDE");
+  const nep = nepFetch({
+    "esearch.fcgi": () => new Response(JSON.stringify({ esearchresult: { idlist: ["37952131"] } }), { status: 200 }),
+    "efetch.fcgi": () => new Response(PUBMED_XML, { status: 200 }),
+    "/responses": () => new Response(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({
+      bronnen: [
+        { nummer: 1, bevindingen: "MACE 6,5% versus 8,0%.", oordeel: "genuanceerd", toelichting: "Relatief 20%, absoluut 1,5 procentpunt." },
+        { nummer: 2, bevindingen: "Verzonnen uitkomst.", oordeel: "bevestigd", toelichting: "Verzonnen." },
+      ], duiding: "Sterk bewijs bij obesitas met HVZ." }) }] }] }), { status: 200 }),
+    "api.crossref.org": () => new Response("{}", { status: 404 }),
+  });
+  try {
+    const { verdieping } = await verdiep([
+      { omschrijving: "SELECT", auteurs: "", jaar: "", tijdschrift: "", doi: "10.1056/nejmoa2307563", pmid: "", bewering: "20% minder MACE", herkomst: "slide 1" },
+      { omschrijving: "Een studie die niet bestaat", auteurs: "", jaar: "", tijdschrift: "", doi: "", pmid: "", bewering: "Alles werkt", herkomst: "gesprek" },
+    ]);
+    assertEquals(verdieping.bronnen[0]!.oordeel, "genuanceerd");
+    assert(verdieping.bronnen[0]!.citaat.includes("PMID: 37952131"), "de citatie komt van PubMed, niet van het model");
+  } finally { nep.herstel(); }
+
+  // Nu een bron die PubMed niet kent, terwijl het model toch een uitkomst verzint.
+
+  const nep2 = nepFetch({
+    "esearch.fcgi": () => new Response(JSON.stringify({ esearchresult: { idlist: [] } }), { status: 200 }),
+    "/responses": () => new Response(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({
+      bronnen: [{ nummer: 1, bevindingen: "Verzonnen uitkomst.", oordeel: "bevestigd", toelichting: "Verzonnen." }], duiding: "" }) }] }] }), { status: 200 }),
+  });
+  try {
+    const { verdieping } = await verdiep([{ omschrijving: "Een studie die niet bestaat", auteurs: "", jaar: "", tijdschrift: "", doi: "", pmid: "", bewering: "Alles werkt", herkomst: "gesprek" }]);
+    const b = verdieping.bronnen[0]!;
+    assertEquals(b.gevonden, false);
+    assertEquals(b.oordeel, "niet te beoordelen", "het model mag niets beweren over een bron die niet gevonden is");
+    assertEquals(b.bevindingen, "");
+  } finally { nep2.herstel(); }
 });

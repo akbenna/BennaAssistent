@@ -80,6 +80,13 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         ],
       },
       {
+        kop: "Congressen, symposia en webinars",
+        tekst: [
+          "Kies vóór het opnemen Congres of webinar. De notitie wordt dan wetenschappelijk: per spreker de kernboodschappen en de onderbouwing zoals die werd gebracht, de relevantie voor de huisartsenpraktijk en het kaderwerk, en kanttekeningen. Tijdens de opname staan er twee knoppen in de balk bovenaan: Slide maakt een foto van wat er op het scherm staat, de ster markeert een moment dat je wilt terugvinden. Allebei krijgen ze het moment in de opname mee; een slide wordt al gelezen terwijl de lezing doorloopt.",
+          "Op de slides en in het gesprek zoekt de assistent naar genoemde studies. Vindt hij er, dan vraagt hij of hij ze moet nazoeken. Zeg je ja, dan zoekt hij ze op in PubMed, legt elke bewering naast het abstract en zet er een oordeel bij: bevestigd, genuanceerd, afwijkend of niet te beoordelen. De bron en de citatie komen van PubMed zelf; het model leest alleen het abstract, en zonder abstract geeft het geen oordeel.",
+        ],
+      },
+      {
         kop: "Privacy",
         tekst: [
           "Notities zijn voor bestuur, kaderwerk en zakelijk overleg. Consulten en alles met patiëntgegevens blijven bij SmartVoice. Over het transcript draait hetzelfde privacyfilter als over mail. Slaat het aan, dan wordt er niets samengevat en wacht de notitie op jou: lees het transcript, en verwijder hem of bevestig dat het een vals alarm was. Die bevestiging wordt vastgelegd.",

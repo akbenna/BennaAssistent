@@ -84,6 +84,36 @@ export interface Afspraak {
   event_id?: string;
 }
 
+/** Wat voor gesprek het is. Bepaalt de toon van de notitie, niet het schema. */
+export type Soort = "vergadering" | "congres" | "telefoon";
+export const SOORTEN: Soort[] = ["vergadering", "congres", "telefoon"];
+
+/** Een presentatie op een congres, symposium of webinar. */
+export interface Presentatie {
+  spreker: string;
+  onderwerp: string;
+  kernboodschappen: string[];
+  /** Cijfers en studies zoals de spreker ze bracht: effectgrootte, NNT, populatie. */
+  onderbouwing: string[];
+}
+
+/** Een bron zoals de spreker of de slide hem noemde, nog niet nagezocht. */
+export interface GenoemdeBron {
+  omschrijving: string;
+  auteurs: string;
+  jaar: string;
+  tijdschrift: string;
+  doi: string;
+  /** Wat er volgens de spreker of de slide uit deze studie volgt. */
+  bewering: string;
+}
+
+export interface Bron extends GenoemdeBron {
+  /** Waar hij vandaan komt: "slide 3 (12:40)" of "gesprek". */
+  herkomst: string;
+  pmid: string;
+}
+
 export interface Uitkomst {
   titel: string;
   project: string;
@@ -94,6 +124,12 @@ export interface Uitkomst {
   afspraken: Afspraak[];
   open_vragen: string[];
   mijn_vervolgstappen: string[];
+  presentaties: Presentatie[];
+  genoemde_bronnen: GenoemdeBron[];
+  relevantie_praktijk: string;
+  kanttekeningen: string[];
+  /** Na het samenvoegen met de slides: alle bronnen, ontdubbeld. Niet door het model gevuld. */
+  bronnen?: Bron[];
 }
 
 export const GEEN_PROJECT = "Geen";
@@ -110,7 +146,8 @@ export function schema(projectNamen: string[]) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["titel", "project", "samenvatting", "deelnemers", "besluiten", "actiepunten", "afspraken", "open_vragen", "mijn_vervolgstappen"],
+    required: ["titel", "project", "samenvatting", "deelnemers", "besluiten", "actiepunten", "afspraken", "open_vragen", "mijn_vervolgstappen",
+      "presentaties", "genoemde_bronnen", "relevantie_praktijk", "kanttekeningen"],
     properties: {
       titel: { type: "string", description: "Korte, specifieke titel van hooguit acht woorden, zonder datum." },
       project: { type: "string", enum: [...projectNamen, GEEN_PROJECT] },
@@ -149,6 +186,40 @@ export function schema(projectNamen: string[]) {
       },
       open_vragen: { ...lijst, description: "Onbeantwoorde vragen en onduidelijkheden." },
       mijn_vervolgstappen: { ...lijst, description: "Wat de eigenaar vóór het volgende contact moet voorbereiden of beslissen." },
+      presentaties: {
+        type: "array",
+        description: "Alleen bij een congres, symposium of webinar: per spreker of presentatie. Anders leeg.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["spreker", "onderwerp", "kernboodschappen", "onderbouwing"],
+          properties: {
+            spreker: { type: "string", description: "Naam en functie zoals genoemd, of 'onbekend'." },
+            onderwerp: { type: "string" },
+            kernboodschappen: { ...lijst, description: "De boodschappen die de spreker uitdroeg, elk als volledige zin." },
+            onderbouwing: { ...lijst, description: "Cijfers en studies zoals gebracht: effectgrootte, NNT, populatie, follow-up. Letterlijk wat er werd gezegd of op de slide stond." },
+          },
+        },
+      },
+      genoemde_bronnen: {
+        type: "array",
+        description: "Studies, richtlijnen en artikelen die in het gesprek of op een slide werden genoemd. Alleen wat er werkelijk werd genoemd.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["omschrijving", "auteurs", "jaar", "tijdschrift", "doi", "bewering"],
+          properties: {
+            omschrijving: { type: "string", description: "Titel of naam van de studie (bijvoorbeeld 'SELECT-trial')." },
+            auteurs: { type: "string", description: "Eerste auteur et al., of leeg." },
+            jaar: { type: "string", description: "Jaartal of leeg." },
+            tijdschrift: { type: "string", description: "Tijdschrift of leeg." },
+            doi: { type: "string", description: "DOI als die letterlijk genoemd is, anders leeg." },
+            bewering: { type: "string", description: "Wat er volgens de spreker uit deze studie volgt." },
+          },
+        },
+      },
+      relevantie_praktijk: { type: "string", description: "Alleen bij een congres: wat dit betekent voor de huisartsenpraktijk en het kaderwerk, in het licht van de NHG-standaarden. Anders leeg." },
+      kanttekeningen: { ...lijst, description: "Alleen bij een congres: methodologische of praktische kanttekeningen die werden genoemd of die voor de hand liggen (sponsoring, surrogaat-eindpunten, populatie die afwijkt van de eerste lijn). Markeer eigen kanttekeningen als 'Notulist:'." },
     },
   };
 }
@@ -158,7 +229,19 @@ export interface ProjectContext {
   trefwoorden?: string[] | null;
 }
 
-export function systeemPrompt(o: { mijnNaam: string; datum: string; projecten: ProjectContext[] }): string {
+const PER_SOORT: Record<Soort, string> = {
+  vergadering: `Dit is een vergadering of overleg. Leg besluiten, afspraken en wie wat doet nauwkeurig vast. Laat presentaties, relevantie_praktijk en kanttekeningen leeg, en genoemde_bronnen ook, tenzij er werkelijk een studie of richtlijn werd aangehaald.`,
+  telefoon: `Dit is een telefoongesprek. Houd het kort: één alinea samenvatting, de afspraken en de vervolgstap. Laat presentaties, relevantie_praktijk en kanttekeningen leeg.`,
+  congres: `Dit is een congres, symposium, nascholing of webinar, en de eigenaar is er als kaderarts en huisarts. Schrijf wetenschappelijke notulen:
+- Per spreker een presentatie, met de kernboodschappen en de onderbouwing zoals die werd gebracht: welke studie, welke populatie, welk eindpunt, welke effectgrootte (relatief én absoluut als het genoemd werd), NNT, follow-up.
+- Neem de slides die als foto zijn bijgevoegd mee op het moment waarop ze werden getoond; wat op een slide staat telt even zwaar als wat er werd gezegd.
+- Zet elke genoemde studie, richtlijn of publicatie bij genoemde_bronnen, met de bewering die de spreker eraan ophing. Verzin geen DOI, geen jaartal en geen tijdschrift: wat niet genoemd is blijft leeg.
+- Onderscheid scherp tussen wat de spreker beweerde en wat bewezen is. Je beoordeelt hier nog niets; de bronnen worden later apart nagezocht.
+- Vul relevantie_praktijk: wat betekent dit voor de huisartsenpraktijk en het CVRM-kaderwerk, en raakt het een NHG-standaard?
+- Besluiten en actiepunten zijn hier zeldzaam; actiepunten van de eigenaar ("dit wil ik nalezen", "dit bespreken met de POH") wel opnemen.`,
+};
+
+export function systeemPrompt(o: { mijnNaam: string; datum: string; projecten: ProjectContext[]; soort?: Soort }): string {
   const proj = o.projecten.length
     ? o.projecten.map((p) => `- ${p.naam}${p.trefwoorden?.length ? ` (${p.trefwoorden.join(", ")})` : ""}`).join("\n")
     : "(geen projecten)";
@@ -172,19 +255,253 @@ Regels:
 - Spreker "${o.mijnNaam}" is altijd dr. Bennaghmouch zelf. Andere labels ("Spreker 2B") worden per deel van enkele minuten opnieuw toegekend; hetzelfde label in een ander deel kan een ander persoon zijn. Leid namen af uit aanspreekvormen waar dat kan.
 - Op de grens van twee delen kan een zin dubbel staan; neem hem één keer mee.
 - De opname is van ${o.datum}. Reken "volgende week vrijdag" alleen om naar een datum als dat eenduidig is.
+- Momenten die de eigenaar tijdens de opname markeerde zijn voor hem belangrijk; geef ze een plek in de samenvatting.
 - Kies het project dat het best past, of "${GEEN_PROJECT}":
-${proj}`;
+${proj}
+
+${PER_SOORT[o.soort ?? "vergadering"]}`;
 }
 
-export function gebruikerPrompt(o: { transcript: string; agendaTitel?: string | null; deelnemers?: string[]; projectHint?: string | null; bestandsnaam?: string | null }): string {
+export interface FotoVoorPrompt {
+  volgnummer: number;
+  moment: number | null;
+  analyse: FotoAnalyse;
+}
+
+export function gebruikerPrompt(o: {
+  transcript: string; agendaTitel?: string | null; deelnemers?: string[]; projectHint?: string | null;
+  bestandsnaam?: string | null; fotos?: FotoVoorPrompt[]; markeringen?: number[];
+}): string {
   const meta = [
     o.agendaTitel && `Agenda-afspraak: ${o.agendaTitel}`,
     o.deelnemers?.length && `Uitgenodigd: ${o.deelnemers.join(", ")}`,
     o.projectHint && `Waarschijnlijk project: ${o.projectHint}`,
     o.bestandsnaam && `Bestandsnaam: ${o.bestandsnaam}`,
+    o.markeringen?.length && `Door de eigenaar gemarkeerde momenten: ${o.markeringen.map((m) => `[${mmss(m)}]`).join(", ")}`,
   ].filter(Boolean).join("\n");
-  return `${meta ? meta + "\n\n" : ""}Transcript:\n${o.transcript}`;
+  const fotos = (o.fotos ?? []).map((f) => {
+    const a = f.analyse;
+    const refs = a.referenties.map((r) => `  - bron: ${[r.auteurs, r.titel, r.tijdschrift, r.jaar, r.doi && `doi ${r.doi}`, r.pmid && `PMID ${r.pmid}`].filter(Boolean).join(", ")}`).join("\n");
+    return `Slide ${f.volgnummer}${f.moment != null ? ` [${mmss(f.moment)}]` : ""}: ${a.kern}\nTekst op de slide: ${a.tekst}${a.cijfers.length ? `\nCijfers: ${a.cijfers.join("; ")}` : ""}${refs ? `\n${refs}` : ""}`;
+  }).join("\n\n");
+  return `${meta ? meta + "\n\n" : ""}${fotos ? `Slides en foto's die tijdens de opname zijn gemaakt:\n${fotos}\n\n` : ""}Transcript:\n${o.transcript}`;
 }
+
+/* ------------------------------------------------------------ de foto's -- */
+
+export interface Referentie {
+  auteurs: string;
+  titel: string;
+  tijdschrift: string;
+  jaar: string;
+  doi: string;
+  pmid: string;
+}
+
+export interface FotoAnalyse {
+  soort: "slide" | "poster" | "document" | "overig";
+  kern: string;
+  tekst: string;
+  cijfers: string[];
+  referenties: Referentie[];
+}
+
+export const fotoSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["soort", "kern", "tekst", "cijfers", "referenties"],
+  properties: {
+    soort: { type: "string", enum: ["slide", "poster", "document", "overig"] },
+    kern: { type: "string", description: "De boodschap van deze slide in één of twee zinnen, in het Nederlands." },
+    tekst: { type: "string", description: "Alle leesbare tekst op de slide, letterlijk, in de oorspronkelijke taal. Tabellen regel voor regel." },
+    cijfers: { ...lijst, description: "Elke uitkomst met getal: HR, RR, OR, NNT, procenten, betrouwbaarheidsintervallen, p-waarden, met wat ze meten." },
+    referenties: {
+      type: "array",
+      description: "Elke bronvermelding op de slide (vaak klein onderaan). Alleen wat er echt staat; wat onleesbaar is blijft leeg.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["auteurs", "titel", "tijdschrift", "jaar", "doi", "pmid"],
+        properties: {
+          auteurs: { type: "string" }, titel: { type: "string" }, tijdschrift: { type: "string" },
+          jaar: { type: "string" }, doi: { type: "string" }, pmid: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
+export const FOTO_SYSTEEM = `Je leest een foto van een slide, poster of document, gemaakt tijdens een congres, symposium, webinar of vergadering door een Nederlandse huisarts.
+Neem de tekst letterlijk over en verzin niets: wat onleesbaar is, laat je weg. Let vooral op studienamen, uitkomstmaten met hun getallen, en de bronvermelding (vaak klein onderaan de slide). Een DOI of PMID neem je alleen over als hij er letterlijk staat.
+Staan er patiëntgegevens op (een naam, een geboortedatum, een foto van een patiënt), beschrijf die dan niet en zet in kern alleen: "Bevat mogelijk patiëntgegevens".`;
+
+export function trekFotoRecht(r: unknown): FotoAnalyse {
+  const o = (r ?? {}) as Record<string, unknown>;
+  const soort = ["slide", "poster", "document", "overig"].includes(String(o.soort)) ? o.soort as FotoAnalyse["soort"] : "overig";
+  return {
+    soort,
+    kern: tekst(o.kern, 600),
+    tekst: tekst(o.tekst, 6000),
+    cijfers: tekstLijst(o.cijfers, 30),
+    referenties: (Array.isArray(o.referenties) ? o.referenties : []).slice(0, 20).map((x) => {
+      const v = (x ?? {}) as Record<string, unknown>;
+      return {
+        auteurs: tekst(v.auteurs, 300), titel: tekst(v.titel, 400), tijdschrift: tekst(v.tijdschrift, 200),
+        jaar: (tekst(v.jaar, 10).match(/\b(19|20)\d{2}\b/) ?? [""])[0]!, doi: schoonDoi(tekst(v.doi, 200)),
+        pmid: (tekst(v.pmid, 20).match(/\d{5,9}/) ?? [""])[0]!,
+      };
+    }).filter((x) => x.titel || x.doi || x.pmid || x.auteurs),
+  };
+}
+
+/* ------------------------------------------------------------ de bronnen -- */
+
+/** Een DOI zonder voorvoegsel en zonder leesteken erachter, of leeg. */
+export function schoonDoi(d: string): string {
+  const m = d.match(/10\.\d{4,9}\/[^\s"<>]+/i);
+  return m ? m[0].replace(/[.,;)\]]+$/, "").toLowerCase() : "";
+}
+
+const normTitel = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Alle bronnen van de slides en uit het gesprek, ontdubbeld. Een bron die op
+ * een slide stond en ook werd genoemd komt één keer, met de gegevens van de
+ * slide (die zijn completer) en de bewering uit het gesprek.
+ */
+export function verzamelBronnen(fotos: FotoVoorPrompt[], genoemd: GenoemdeBron[]): Bron[] {
+  const uit: Bron[] = [];
+  const zoek = (b: { doi: string; pmid?: string; omschrijving: string }) => uit.find((x) =>
+    (b.doi && x.doi === b.doi) || (b.pmid && x.pmid === b.pmid)
+    || (normTitel(b.omschrijving).length > 12 && normTitel(x.omschrijving) === normTitel(b.omschrijving)));
+  for (const f of fotos) {
+    for (const r of f.analyse.referenties) {
+      const b: Bron = {
+        omschrijving: r.titel || `${r.auteurs} ${r.jaar}`.trim(), auteurs: r.auteurs, jaar: r.jaar, tijdschrift: r.tijdschrift,
+        doi: schoonDoi(r.doi), pmid: r.pmid, bewering: f.analyse.kern,
+        herkomst: `slide ${f.volgnummer}${f.moment != null ? ` (${mmss(f.moment)})` : ""}`,
+      };
+      if (!zoek(b)) uit.push(b);
+    }
+  }
+  for (const g of genoemd) {
+    const doi = schoonDoi(g.doi);
+    const bestaand = zoek({ doi, omschrijving: g.omschrijving });
+    if (bestaand) {
+      if (g.bewering) bestaand.bewering = g.bewering;
+      continue;
+    }
+    uit.push({ ...g, doi, pmid: "", herkomst: "gesprek" });
+  }
+  return uit.slice(0, 25);
+}
+
+/* ---------------------------------------------------------- de verdieping -- */
+
+/** Een bron zoals PubMed of Crossref hem kent. */
+export interface BronGegevens {
+  pmid: string;
+  doi: string;
+  titel: string;
+  auteurs: string[];
+  tijdschrift: string;
+  jaar: string;
+  abstract: string;
+  url: string;
+}
+
+export type Oordeel = "bevestigd" | "genuanceerd" | "afwijkend" | "niet te beoordelen";
+
+export interface VerdiepteBron {
+  herkomst: string;
+  bewering: string;
+  gevonden: boolean;
+  gegevens: BronGegevens | null;
+  citaat: string;
+  bevindingen: string;
+  oordeel: Oordeel;
+  toelichting: string;
+}
+
+export interface Verdieping {
+  bronnen: VerdiepteBron[];
+  duiding: string;
+  dienst: string;
+  gemaakt_op: string;
+}
+
+/** Vancouver, zoals de NHG-standaarden en het NTvG citeren. */
+export function vancouver(g: BronGegevens): string {
+  const auteurs = g.auteurs.length > 6 ? `${g.auteurs.slice(0, 6).join(", ")}, et al` : g.auteurs.join(", ");
+  return [auteurs && `${auteurs}.`, g.titel && `${g.titel.replace(/\.$/, "")}.`, g.tijdschrift && `${g.tijdschrift}.`, g.jaar && `${g.jaar}.`,
+    g.doi && `doi:${g.doi}`, g.pmid && `PMID: ${g.pmid}`].filter(Boolean).join(" ");
+}
+
+/** Leest het PubMed-XML van efetch. Bewust eenvoudig: alleen de velden die we tonen. */
+export function leesPubmedXml(xml: string): BronGegevens[] {
+  const ont = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
+  const een = (blok: string, re: RegExp) => ont(blok.match(re)?.[1] ?? "");
+  return [...xml.matchAll(/<PubmedArticle>([\s\S]*?)<\/PubmedArticle>/g)].map((m) => {
+    const b = m[1]!;
+    const auteurs = [...b.matchAll(/<Author[^>]*>([\s\S]*?)<\/Author>/g)].map((a) => {
+      const achter = een(a[1]!, /<LastName>([\s\S]*?)<\/LastName>/), init = een(a[1]!, /<Initials>([\s\S]*?)<\/Initials>/);
+      return achter ? `${achter} ${init}`.trim() : een(a[1]!, /<CollectiveName>([\s\S]*?)<\/CollectiveName>/);
+    }).filter(Boolean);
+    const abstract = [...b.matchAll(/<AbstractText([^>]*)>([\s\S]*?)<\/AbstractText>/g)].map((a) => {
+      const label = a[1]!.match(/Label="([^"]+)"/)?.[1];
+      return `${label ? `${label}: ` : ""}${ont(a[2]!)}`;
+    }).join("\n");
+    const pmid = een(b, /<PMID[^>]*>(\d+)<\/PMID>/);
+    const doi = schoonDoi(een(b, /<ArticleId IdType="doi">([\s\S]*?)<\/ArticleId>/));
+    const jaar = een(b, /<PubDate>[\s\S]*?<Year>(\d{4})<\/Year>/) || (een(b, /<MedlineDate>([\s\S]*?)<\/MedlineDate>/).match(/\d{4}/)?.[0] ?? "");
+    return {
+      pmid, doi, titel: een(b, /<ArticleTitle>([\s\S]*?)<\/ArticleTitle>/), auteurs,
+      tijdschrift: een(b, /<ISOAbbreviation>([\s\S]*?)<\/ISOAbbreviation>/) || een(b, /<Title>([\s\S]*?)<\/Title>/),
+      jaar, abstract, url: pmid ? `https://pubmed.ncbi.nlm.nih.gov/${pmid}/` : doi ? `https://doi.org/${doi}` : "",
+    };
+  });
+}
+
+/** De zoekvraag voor PubMed bij een bron zonder PMID of DOI. */
+export function pubmedZoekterm(b: Pick<Bron, "omschrijving" | "auteurs" | "jaar" | "doi">): string {
+  if (b.doi) return `${b.doi}[doi]`;
+  const woorden = normTitel(b.omschrijving).split(" ").filter((w) => w.length > 3).slice(0, 10);
+  const delen = [woorden.length ? `(${woorden.join(" ")})` : ""];
+  const eerste = b.auteurs.match(/[A-Z][a-zA-Z'\-]+/)?.[0];
+  if (eerste && !/^(et|al|The)$/.test(eerste)) delen.push(`${eerste}[au]`);
+  if (/^\d{4}$/.test(b.jaar)) delen.push(`${b.jaar}[dp]`);
+  return delen.filter(Boolean).join(" AND ");
+}
+
+export const verdiepSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["bronnen", "duiding"],
+  properties: {
+    bronnen: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["nummer", "bevindingen", "oordeel", "toelichting"],
+        properties: {
+          nummer: { type: "integer" },
+          bevindingen: { type: "string", description: "Wat de studie werkelijk vond, uitsluitend volgens het abstract: opzet, populatie, interventie, eindpunt, uitkomst met getallen. Twee tot vijf zinnen." },
+          oordeel: { type: "string", enum: ["bevestigd", "genuanceerd", "afwijkend", "niet te beoordelen"] },
+          toelichting: { type: "string", description: "Waarom dit oordeel: waar komt de bewering overeen met het abstract, waar niet. Eén of twee zinnen." },
+        },
+      },
+    },
+    duiding: { type: "string", description: "Een korte wetenschappelijke duiding van het geheel voor een huisarts en kaderarts: hoe sterk is wat er werd beweerd, wat betekent het voor de praktijk, en waar wijkt het af van de NHG-standaard als dat zo is. Lopende tekst, hooguit twee alinea's." },
+  },
+};
+
+export const VERDIEP_SYSTEEM = `Je bent een wetenschappelijk medewerker van een Nederlandse huisarts en kaderarts CVRM. Je vergelijkt wat sprekers op een congres beweerden met wat de aangehaalde studies werkelijk vonden.
+Regels:
+- Gebruik voor de bevindingen uitsluitend het meegegeven abstract. Wat er niet in staat, weet je niet; zeg dat.
+- Is er geen abstract of geen gevonden studie, dan is het oordeel "niet te beoordelen".
+- "bevestigd": de bewering volgt uit het abstract. "genuanceerd": de richting klopt, maar de bewering laat iets weg dat ertoe doet (een andere populatie, een surrogaat-eindpunt, een relatieve in plaats van een absolute winst, een subgroep). "afwijkend": het abstract zegt iets anders.
+- Schrijf in het Nederlands, zakelijk en precies. Noem getallen zoals ze in het abstract staan.`;
 
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
 const TIJD = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -222,6 +539,20 @@ export function trekRecht(r: unknown, projectNamen: string[]): Uitkomst {
     }).filter((a) => a.wat && DATUM.test(a.datum)),
     open_vragen: tekstLijst(o.open_vragen),
     mijn_vervolgstappen: tekstLijst(o.mijn_vervolgstappen),
+    presentaties: (Array.isArray(o.presentaties) ? o.presentaties : []).slice(0, 30).map((p) => {
+      const x = (p ?? {}) as Record<string, unknown>;
+      return { spreker: tekst(x.spreker, 200) || "onbekend", onderwerp: tekst(x.onderwerp, 300), kernboodschappen: tekstLijst(x.kernboodschappen), onderbouwing: tekstLijst(x.onderbouwing) };
+    }).filter((p) => p.onderwerp || p.kernboodschappen.length),
+    genoemde_bronnen: (Array.isArray(o.genoemde_bronnen) ? o.genoemde_bronnen : []).slice(0, 25).map((b) => {
+      const x = (b ?? {}) as Record<string, unknown>;
+      return {
+        omschrijving: tekst(x.omschrijving, 400), auteurs: tekst(x.auteurs, 300),
+        jaar: (tekst(x.jaar, 10).match(/\b(19|20)\d{2}\b/) ?? [""])[0]!, tijdschrift: tekst(x.tijdschrift, 200),
+        doi: schoonDoi(tekst(x.doi, 200)), bewering: tekst(x.bewering, 600),
+      };
+    }).filter((b) => b.omschrijving),
+    relevantie_praktijk: tekst(o.relevantie_praktijk, 4000),
+    kanttekeningen: tekstLijst(o.kanttekeningen),
   };
 }
 
@@ -229,7 +560,7 @@ export function trekRecht(r: unknown, projectNamen: string[]): Uitkomst {
 
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function docHtml(o: { r: Uitkomst; datum: string; project: string | null; agendaTitel: string | null; transcript: string }): string {
+export function docHtml(o: { r: Uitkomst; datum: string; project: string | null; agendaTitel: string | null; transcript: string; verdieping?: Verdieping | null }): string {
   const { r } = o;
   const opsomming = (kop: string, items: string[]) =>
     items.length ? `<h2>${kop}</h2><ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
@@ -239,12 +570,22 @@ export function docHtml(o: { r: Uitkomst; datum: string; project: string | null;
   const afspraken = r.afspraken.length
     ? `<h2>Afspraken</h2><ul>${r.afspraken.map((a) => `<li>${esc(a.datum)}${a.begintijd ? ` ${esc(a.begintijd)}` : ""}: ${esc(a.wat)}${a.locatie ? `, ${esc(a.locatie)}` : ""}</li>`).join("")}</ul>`
     : "";
+  const presentaties = (r.presentaties ?? []).map((p) => `<h2>${esc(p.onderwerp || "Presentatie")}</h2><p><i>${esc(p.spreker)}</i></p>`
+    + `${p.kernboodschappen.length ? `<ul>${p.kernboodschappen.map((k) => `<li>${esc(k)}</li>`).join("")}</ul>` : ""}`
+    + `${p.onderbouwing.length ? `<p><b>Onderbouwing</b></p><ul>${p.onderbouwing.map((k) => `<li>${esc(k)}</li>`).join("")}</ul>` : ""}`).join("");
+  const v = o.verdieping;
+  const verdieping = v ? `<h2>Bronnen nagezocht</h2>${v.duiding.split(/\n\s*\n/).map((p) => `<p>${esc(p)}</p>`).join("")}<ol>${v.bronnen.map((b) =>
+    `<li><p><b>${esc(b.oordeel)}</b>: ${esc(b.bewering)} <i>(${esc(b.herkomst)})</i></p>${b.bevindingen ? `<p>${esc(b.bevindingen)}</p>` : ""}${b.toelichting ? `<p><i>${esc(b.toelichting)}</i></p>` : ""}<p style="font-size:9pt">${b.gegevens ? esc(b.citaat) + (b.gegevens.url ? ` <a href="${esc(b.gegevens.url)}">${esc(b.gegevens.url)}</a>` : "") : "Niet gevonden in PubMed."}</p></li>`).join("")}</ol>` : "";
+  const bronnen = !v && r.bronnen?.length
+    ? `<h2>Genoemde bronnen</h2><ol>${r.bronnen.map((b) => `<li>${esc([b.auteurs, b.omschrijving, b.tijdschrift, b.jaar, b.doi && `doi:${b.doi}`].filter(Boolean).join(". "))} <i>(${esc(b.herkomst)})</i></li>`).join("")}</ol>` : "";
   const meta = [o.datum, o.project, o.agendaTitel && `Agenda: ${o.agendaTitel}`, r.deelnemers.length && `Aanwezig: ${r.deelnemers.join(", ")}`]
     .filter(Boolean).map(esc).join("<br>");
   return `<html><head><meta charset="utf-8"></head><body>
 <h1>${esc(r.titel)}</h1><p style="color:#59615c">${meta}</p>
 <h2>Samenvatting</h2>${r.samenvatting.split(/\n\s*\n/).map((p) => `<p>${esc(p)}</p>`).join("")}
+${presentaties}${r.relevantie_praktijk ? `<h2>Relevantie voor de praktijk</h2><p>${esc(r.relevantie_praktijk)}</p>` : ""}${opsomming("Kanttekeningen", r.kanttekeningen)}
 ${opsomming("Besluiten", r.besluiten)}${acties}${afspraken}${opsomming("Open vragen", r.open_vragen)}${opsomming("Mijn vervolgstappen", r.mijn_vervolgstappen)}
+${verdieping}${bronnen}
 <hr><h2>Transcript</h2>${o.transcript.split("\n").map((l) => `<p style="font-size:10pt">${esc(l)}</p>`).join("")}
 <p style="color:#59615c;font-size:9pt">Automatisch gemaakt door BennaAssistent. Controleer namen, bedragen en besluiten vóór gebruik.</p>
 </body></html>`;

@@ -8,7 +8,9 @@
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { supabase } from "./supabase";
-import { verwerkOpnames } from "./data";
+import { verwerkOpnames, voegFotoToe } from "./data";
+import { verklein } from "./beeld";
+import type { OpnameSoort } from "../types/db";
 import { Opnemer } from "./opnemer";
 
 export type Fase = "klaar" | "bezig" | "afronden";
@@ -21,8 +23,14 @@ interface OpnameStand {
   melding: string | null;
   notitieId: string | null;
   kanOpnemen: boolean;
-  begin: (projectId?: string | null) => Promise<void>;
+  begin: (projectId?: string | null, soort?: OpnameSoort) => Promise<void>;
   stop: () => Promise<string | null>;
+  /** Zet een markering op dit moment: "dit is belangrijk". */
+  markeer: () => void;
+  markeringen: number;
+  /** Een foto van een slide, met het moment in de opname erbij. */
+  foto: (bestand: Blob) => Promise<void>;
+  fotos: number;
 }
 
 const Ctx = createContext<OpnameStand | null>(null);
@@ -41,6 +49,10 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
   const [melding, setMelding] = useState<string | null>(null);
   const [notitieId, setNotitieId] = useState<string | null>(null);
   const opnemer = useRef<Opnemer | null>(null);
+  const eigenaar = useRef<string>("");
+  const markeringenRef = useRef<number[]>([]);
+  const [markeringen, setMarkeringen] = useState(0);
+  const [fotos, setFotos] = useState(0);
   const kanOpnemen = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
   useEffect(() => {
@@ -52,7 +64,7 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
     return () => { window.clearInterval(t); window.removeEventListener("beforeunload", waarschuw); };
   }, [fase]);
 
-  const begin = useCallback(async (projectId?: string | null) => {
+  const begin = useCallback(async (projectId?: string | null, soort: OpnameSoort = "vergadering") => {
     if (opnemer.current) return;
     setMelding(null);
     const { data: s } = await supabase.auth.getSession();
@@ -60,7 +72,7 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
     if (!uid) { setMelding("Je bent niet ingelogd."); return; }
     const { data, error } = await supabase.from("notities").insert({
       bron: "app", status: "opname", gestart_op: new Date().toISOString(),
-      project_id: projectId ?? null, project_vast: Boolean(projectId),
+      project_id: projectId ?? null, project_vast: Boolean(projectId), soort,
     }).select("id").single();
     if (error || !data) { setMelding(`Kon geen notitie aanmaken: ${error?.message ?? "onbekend"}`); return; }
     const id = (data as { id: string }).id;
@@ -80,6 +92,10 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
       return;
     }
     opnemer.current = o;
+    eigenaar.current = uid;
+    markeringenRef.current = [];
+    setMarkeringen(0);
+    setFotos(0);
     setNotitieId(id);
     setSeconden(0);
     setFase("bezig");
@@ -111,8 +127,33 @@ export function OpnameProvider({ children }: { children: ReactNode }) {
     return id;
   }, [notitieId]);
 
+  const markeer = useCallback(() => {
+    const o = opnemer.current;
+    const id = notitieId;
+    if (!o || !id) return;
+    markeringenRef.current = [...markeringenRef.current, Math.round(o.seconden)];
+    setMarkeringen(markeringenRef.current.length);
+    // De hele lijst, niet een toevoeging: twee snelle tikken mogen elkaar niet overschrijven.
+    supabase.from("notities").update({ markeringen: markeringenRef.current }).eq("id", id).then(() => {}, () => {});
+  }, [notitieId]);
+
+  const foto = useCallback(async (bestand: Blob) => {
+    const o = opnemer.current;
+    const id = notitieId;
+    if (!o || !id) return;
+    const moment = Math.round(o.seconden);
+    try {
+      await voegFotoToe(id, eigenaar.current, await verklein(bestand), moment);
+      setFotos((n) => n + 1);
+      // De server kan hem alvast lezen, terwijl de opname doorloopt.
+      void verwerkOpnames();
+    } catch (e) {
+      setMelding(e instanceof Error ? e.message : String(e));
+    }
+  }, [notitieId]);
+
   return (
-    <Ctx.Provider value={{ fase, seconden, niveau, wachtrij, melding, notitieId, kanOpnemen, begin, stop }}>
+    <Ctx.Provider value={{ fase, seconden, niveau, wachtrij, melding, notitieId, kanOpnemen, begin, stop, markeer, markeringen, foto, fotos }}>
       {children}
     </Ctx.Provider>
   );

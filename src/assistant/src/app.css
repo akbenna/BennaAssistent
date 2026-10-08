@@ -720,3 +720,17 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
   background: var(--vlak); border: 1px solid var(--lijn); border-radius: var(--radius);
   padding: 0.9rem; max-height: 60vh; overflow: auto; margin: 0.5rem 0 0;
 }
+
+/* --------------------------------------------- notities: congres ------- */
+.rij2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+.presentatie { border-top: 1px solid var(--lijn); padding-top: 0.6rem; margin-top: 0.8rem; }
+.presentatie h3 { margin-top: 0; }
+.fotorij { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.6rem; }
+.foto { margin: 0; background: var(--vlak); border: 1px solid var(--lijn); border-radius: var(--radius-klein); overflow: hidden; }
+.foto img, .fotoleeg { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--vlak2); }
+.foto figcaption { padding: 0.4rem 0.5rem 0.5rem; line-height: 1.35; }
+.vraagkaart { border-left: 3px solid var(--k); }
+.bronlijst { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+.bronlijst > li { margin: 0 0 0.8rem; }
+.opnamebalk .knop { flex: none; }
+.opnamebalk svg { width: 15px; height: 15px; }
