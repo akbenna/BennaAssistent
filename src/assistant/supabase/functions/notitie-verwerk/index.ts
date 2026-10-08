@@ -30,6 +30,7 @@ import { kiesProject } from "../_shared/verwerk.ts";
 import { schrijfUit } from "../_shared/spraak.ts";
 import { vatSamen } from "../_shared/samenvatten.ts";
 import { leesFoto, verdiep } from "../_shared/bronnen.ts";
+import { leesPagina } from "../_shared/pagina.ts";
 import {
   docHtml, GEEN_PROJECT, koppelSprekers, leesAantekeningen, maakTranscript, noemSprekers, SOORTEN, verzamelBronnen,
   type FotoAnalyse, type FotoVoorPrompt, type RuwSegment, type Segment, type Soort, type Uitkomst, type Verdieping,
@@ -154,14 +155,15 @@ async function fotoMislukt(admin: Admin, f: Foto, e: unknown) {
 
 /** Klaar om samen te vatten: gestopt, minstens één deel, en alle delen uit. */
 async function zetKlaarVoorSamenvatten(admin: Admin, eigenaar: string | null) {
-  let q = admin.from("notities").select("id, notitie_delen(status), notitie_fotos(status)").eq("status", "verwerken").limit(20);
+  let q = admin.from("notities").select("id, bron, notitie_delen(status), notitie_fotos(status)").eq("status", "verwerken").limit(20);
   if (eigenaar) q = q.eq("owner_id", eigenaar);
   const { data } = await q;
-  for (const n of (data ?? []) as Array<{ id: string; notitie_delen: Array<{ status: string }>; notitie_fotos: Array<{ status: string }> }>) {
+  for (const n of (data ?? []) as Array<{ id: string; bron: string; notitie_delen: Array<{ status: string }>; notitie_fotos: Array<{ status: string }> }>) {
     const delen = n.notitie_delen ?? [];
     // Een foto die nog gelezen wordt hoort in de samenvatting; daar wachten we op.
     const fotosKlaar = (n.notitie_fotos ?? []).every((f) => f.status !== "klaar" && f.status !== "bezig");
-    if (delen.length === 0) {
+    // Een snelle notitie heeft geen geluid; die wacht alleen op zijn foto's.
+    if (delen.length === 0 && n.bron !== "tekst") {
       await admin.from("notities").update({ status: "fout", fout: "Opname zonder geluid" }).eq("id", n.id);
     } else if (delen.every((d) => d.status === "gereed") && fotosKlaar) {
       await admin.from("notities").update({ status: "samenvatten" }).eq("id", n.id).eq("status", "verwerken");
@@ -247,21 +249,45 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   const inst = await instellingen(admin, owner);
   const modellen: Record<string, unknown> = { ...(n.modellen ?? {}) };
 
-  const { data: delen } = await admin.from("notitie_delen").select("volgnummer,begin_sec,duur_sec,segmenten,dienst")
-    .eq("notitie_id", n.id).order("volgnummer");
-  const diensten = new Set<string>();
-  for (const d of delen ?? []) if (d.dienst) diensten.add(d.dienst);
-  // Sprekers over de delen heen gekoppeld, de dubbele zin op elke naad eruit.
-  const alle: Segment[] = koppelSprekers((delen ?? []).map((d) => ({
-    volgnummer: d.volgnummer, begin: Number(d.begin_sec), duur: d.duur_sec, segmenten: (d.segmenten ?? []) as RuwSegment[],
-  })), inst.mijn_naam);
-  if (!alle.length) {
-    await admin.from("notities").update({ status: "fout", fout: "Geen spraak herkend in de opname" }).eq("id", n.id);
-    return;
+  const snel = n.bron === "tekst";
+  let transcript: string;
+  let duur: number | null = null;
+  if (snel) {
+    /* Een snelle notitie: wat je typte staat in `invoer`, de tekst van een
+       bewaard artikel komt in `transcript`. Eén keer ophalen; lukt het niet,
+       dan staat de reden erbij en gaat de notitie verder zonder. */
+    transcript = n.transcript ?? "";
+    if (n.link && !n.transcript && !modellen.link_fout) {
+      try {
+        const p = await leesPagina(n.link);
+        transcript = p.titel ? `${p.titel}\n\n${p.tekst}` : p.tekst;
+        if (!transcript.trim()) modellen.link_fout = "Op de pagina stond geen leesbare tekst.";
+      } catch (e) {
+        modellen.link_fout = `Artikel niet opgehaald: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300);
+      }
+    }
+    const { count } = await admin.from("notitie_fotos").select("id", { count: "exact", head: true }).eq("notitie_id", n.id).eq("status", "gereed");
+    if (!transcript.trim() && !(n.invoer ?? "").trim() && !count) {
+      await admin.from("notities").update({ status: "fout", fout: modellen.link_fout ? String(modellen.link_fout) : "Lege notitie", modellen }).eq("id", n.id);
+      return;
+    }
+  } else {
+    const { data: delen } = await admin.from("notitie_delen").select("volgnummer,begin_sec,duur_sec,segmenten,dienst")
+      .eq("notitie_id", n.id).order("volgnummer");
+    const diensten = new Set<string>();
+    for (const d of delen ?? []) if (d.dienst) diensten.add(d.dienst);
+    // Sprekers over de delen heen gekoppeld, de dubbele zin op elke naad eruit.
+    const alle: Segment[] = koppelSprekers((delen ?? []).map((d) => ({
+      volgnummer: d.volgnummer, begin: Number(d.begin_sec), duur: d.duur_sec, segmenten: (d.segmenten ?? []) as RuwSegment[],
+    })), inst.mijn_naam);
+    if (!alle.length) {
+      await admin.from("notities").update({ status: "fout", fout: "Geen spraak herkend in de opname" }).eq("id", n.id);
+      return;
+    }
+    transcript = maakTranscript(alle);
+    duur = Math.round(Math.max(...alle.map((s) => s.eind)));
+    modellen.transcriptie = [...diensten];
   }
-  let transcript = maakTranscript(alle);
-  const duur = Math.round(Math.max(...alle.map((s) => s.eind)));
-  modellen.transcriptie = [...diensten];
 
   /* Het privacyfilter, vóór het taalmodel. Dezelfde regels als bij mail: ze
      staan in de code en zijn niet uit te zetten. Wat de eigenaar wel kan, is
@@ -270,7 +296,7 @@ async function vatNotitieSamen(admin: Admin, n: any) {
      en wordt de audio over zeven dagen gewist. */
   if (!n.privacy_bevestigd_op) {
     const { data: filters } = await admin.from("filters").select("soort,waarde,actief").eq("owner_id", owner);
-    const pc = checkPrivacy({ from: "", subject: n.titel ?? "", text: transcript }, (filters ?? []) as FilterRow[]);
+    const pc = checkPrivacy({ from: "", subject: n.titel ?? "", text: snel ? `${n.invoer ?? ""}\n\n${transcript}` : transcript }, (filters ?? []) as FilterRow[]);
     if (pc.excluded) {
       await admin.from("notities").update({
         status: "geweigerd", privacy_reden: pc.reason, transcript, duur_sec: duur, modellen, samenvatting: null,
@@ -305,13 +331,14 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
   const { uitkomst: r, dienst, verbruik, uitval } = await vatSamen({
     transcript, mijnNaam: inst.mijn_naam, datum, soort, fotos, markeringen, aantekeningen,
+    invoer: snel ? n.invoer ?? "" : null, link: n.link ?? null,
     projecten: vast ? [vast] : projecten,
     agendaTitel: agenda?.titel ?? null, deelnemers: agenda?.deelnemers ?? [],
     projectHint: hint?.naam ?? null, bestandsnaam: (n.modellen?.bestandsnaam as string | undefined) ?? null,
   });
   r.bronnen = verzamelBronnen(fotos, r.genoemde_bronnen);
   // Namen die het model uit het gesprek haalde, in het transcript zelf.
-  transcript = noemSprekers(transcript, r.sprekers);
+  if (!snel) transcript = noemSprekers(transcript, r.sprekers);
   modellen.samenvatting = dienst;
   if (uitval) modellen.samenvatting_uitval = uitval;
   const project = vast ?? projecten.find((p) => p.naam === r.project && r.project !== GEEN_PROJECT) ?? hint;
@@ -322,7 +349,7 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   const { data: item, error: eItem } = await admin.from("items").upsert({
     owner_id: owner, source_id: bron, extern_id: n.id, thread_id: null,
     deeplink: app ? `${app}/notities/${n.id}` : null,
-    afzender: agenda?.titel ?? "Opname", onderwerp: r.titel,
+    afzender: agenda?.titel ?? (snel ? "Notitie" : "Opname"), onderwerp: r.titel,
     samenvatting: r.samenvatting.split(/\n/)[0]!.slice(0, 400), ontvangen_op: n.gestart_op,
   }, { onConflict: "source_id,extern_id" }).select("id").single();
   if (eItem || !item) throw new Error(`Item: ${eItem?.message}`);
@@ -333,7 +360,7 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   let docId: string | null = n.drive_doc_id ?? null;
   try {
     const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: project?.naam ?? null, agendaTitel: agenda?.titel ?? null, transcript, aantekeningen }), project?.naam ?? null, docId);
+    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: project?.naam ?? null, agendaTitel: agenda?.titel ?? null, transcript, aantekeningen, invoer: snel ? n.invoer ?? "" : null, link: n.link ?? null }), project?.naam ?? null, docId);
     delete modellen.drive_fout;
   } catch (e) {
     modellen.drive_fout = e instanceof GoogleError && e.status === 403
@@ -351,6 +378,8 @@ async function vatNotitieSamen(admin: Admin, n: any) {
 
   const { error } = await admin.from("notities").update({
     status: "gereed", titel: r.titel, samenvatting: r, transcript, duur_sec: duur, fout: null,
+    // Labels die je zelf zette blijven; alleen een notitie zonder krijgt die van het model.
+    labels: (n.labels ?? []).length ? n.labels : r.labels,
     project_id: project?.id ?? null, deelnemers: r.deelnemers.length ? r.deelnemers : agenda?.deelnemers ?? [],
     agenda_event_id: agenda?.id ?? null, agenda_titel: agenda?.titel ?? null,
     drive_doc_id: docId, item_id: item.id, modellen,
@@ -416,7 +445,7 @@ async function verdiepNotitie(admin: Admin, n: any) {
     const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
     const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
     const { data: p } = n.project_id ? await admin.from("projects").select("naam").eq("id", n.project_id).maybeSingle() : { data: null };
-    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: p?.naam ?? null, agendaTitel: n.agenda_titel, transcript: n.transcript ?? "", verdieping, aantekeningen: leesAantekeningen(n.aantekeningen) }), p?.naam ?? null, docId);
+    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: p?.naam ?? null, agendaTitel: n.agenda_titel, transcript: n.transcript ?? "", verdieping, aantekeningen: leesAantekeningen(n.aantekeningen), invoer: n.bron === "tekst" ? n.invoer ?? "" : null, link: n.link ?? null }), p?.naam ?? null, docId);
   } catch (e) {
     modellen.drive_fout = String(e).slice(0, 300);
   }

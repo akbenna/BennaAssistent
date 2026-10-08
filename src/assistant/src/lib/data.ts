@@ -4,7 +4,7 @@ import { vandaag } from "./format";
 import { metActueleDeadlines, weekVan } from "./week";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
-  Foto, Gezondheid, Koppeling, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
+  Foto, Gezondheid, Koppeling, NascholingRegel, NotitieAntwoord, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
   TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
 
@@ -460,16 +460,17 @@ export async function haalSchuldig(): Promise<Schuldig[]> {
 
 /* -------------------------------------------------------------- notities -- */
 
-const OPNAME_REGEL = "id,status,titel,gestart_op,duur_sec,project_id,bron,soort,projects(naam,kleur)";
+const OPNAME_REGEL = "id,status,titel,gestart_op,duur_sec,project_id,bron,soort,labels,projects(naam,kleur)";
 
-export async function haalOpnames(o: { zoek?: string; projectId?: string | null; statussen?: Opname["status"][]; limiet?: number } = {}): Promise<OpnameRegel[]> {
+export async function haalOpnames(o: { zoek?: string; projectId?: string | null; statussen?: Opname["status"][]; limiet?: number; label?: string | null } = {}): Promise<OpnameRegel[]> {
   let q = supabase.from("notities").select(OPNAME_REGEL);
+  if (o.label) q = q.contains("labels", [o.label]);
   if (o.projectId) q = q.eq("project_id", o.projectId);
   if (o.statussen?.length) q = q.in("status", o.statussen);
   /* Komma's en haakjes zijn syntaxis in het filter, % en _ zijn jokers: wie op
      "50%" zoekt, bedoelt niet "50 en dan wat dan ook". */
   const veilig = (o.zoek ?? "").replace(/[%_,()\\*"]/g, " ").trim();
-  if (veilig) q = q.or(`titel.ilike.%${veilig}%,transcript.ilike.%${veilig}%`);
+  if (veilig) q = q.or(`titel.ilike.%${veilig}%,transcript.ilike.%${veilig}%,invoer.ilike.%${veilig}%`);
   return controleer(await q.order("gestart_op", { ascending: false }).limit(o.limiet ?? 100).returns<OpnameRegel[]>());
 }
 
@@ -592,4 +593,54 @@ export async function haalVoorbereiding(o: { projectId: string | null; titel: st
     taken = (data ?? []).map((r) => r.tasks).filter((t): t is TaakRij => Boolean(t));
   }
   return maakVoorbereiding(notities, taken);
+}
+
+/**
+ * Een snelle notitie zonder opname. Eerst als 'opname' neerzetten, dan de
+ * foto's erbij, en pas dan op 'verwerken': anders vat de server hem samen
+ * voordat de foto's boven staan.
+ */
+export async function maakSnelleNotitie(o: {
+  eigenaar: string; tekst: string; link: string | null; projectId: string | null; labels: string[]; fotos: Blob[];
+}): Promise<string> {
+  const { data, error } = await supabase.from("notities").insert({
+    bron: "tekst", soort: "notitie", status: "opname", gestart_op: new Date().toISOString(),
+    invoer: o.tekst, link: o.link, labels: o.labels,
+    project_id: o.projectId, project_vast: Boolean(o.projectId),
+  }).select("id").single();
+  if (error || !data) throw new Error(error?.message ?? "Kon geen notitie aanmaken");
+  const id = (data as { id: string }).id;
+  for (const f of o.fotos) await voegFotoToe(id, o.eigenaar, f, null);
+  const { error: e2 } = await supabase.from("notities").update({ status: "verwerken" }).eq("id", id);
+  if (e2) throw new Error(e2.message);
+  void verwerkOpnames();
+  return id;
+}
+
+/** Alle labels die je gebruikt, met hoe vaak. */
+export async function haalLabels(): Promise<Array<{ label: string; aantal: number }>> {
+  const rijen = controleer(await supabase.from("notities").select("labels").returns<Array<{ labels: string[] | null }>>());
+  const tel = new Map<string, number>();
+  for (const r of rijen) for (const l of r.labels ?? []) tel.set(l, (tel.get(l) ?? 0) + 1);
+  return [...tel].map(([label, aantal]) => ({ label, aantal })).sort((a, b) => b.aantal - a.aantal || a.label.localeCompare(b.label, "nl"));
+}
+
+/** Notities die een label delen met deze, nieuwste eerst. */
+export async function haalVerwant(id: string, labels: string[]): Promise<OpnameRegel[]> {
+  if (!labels.length) return [];
+  return controleer(await supabase.from("notities").select(OPNAME_REGEL).overlaps("labels", labels).neq("id", id)
+    .in("status", ["gereed", "goedgekeurd"]).order("gestart_op", { ascending: false }).limit(6).returns<OpnameRegel[]>());
+}
+
+export async function vraagNotities(vraag: string): Promise<NotitieAntwoord> {
+  return roepFunctie("notitie-vraag", { vraag });
+}
+
+/** Congressen, symposia en webinars van één jaar, voor het nascholingslogboek. */
+export async function haalNascholing(jaar: number): Promise<NascholingRegel[]> {
+  return controleer(await supabase.from("notities")
+    .select("id,titel,gestart_op,duur_sec,status,nascholing_punten,nascholing_organisator,verdieping,labels,samenvatting")
+    .eq("soort", "congres").in("status", ["gereed", "goedgekeurd"])
+    .gte("gestart_op", `${jaar}-01-01T00:00:00+01:00`).lt("gestart_op", `${jaar + 1}-01-01T00:00:00+01:00`)
+    .order("gestart_op").returns<NascholingRegel[]>());
 }

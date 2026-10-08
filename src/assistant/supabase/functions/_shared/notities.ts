@@ -190,8 +190,8 @@ export interface SprekerNaam {
 }
 
 /** Wat voor gesprek het is. Bepaalt de toon van de notitie, niet het schema. */
-export type Soort = "vergadering" | "congres" | "telefoon";
-export const SOORTEN: Soort[] = ["vergadering", "congres", "telefoon"];
+export type Soort = "vergadering" | "congres" | "telefoon" | "notitie";
+export const SOORTEN: Soort[] = ["vergadering", "congres", "telefoon", "notitie"];
 
 /** Een presentatie op een congres, symposium of webinar. */
 export interface Presentatie {
@@ -234,6 +234,8 @@ export interface Uitkomst {
   relevantie_praktijk: string;
   kanttekeningen: string[];
   sprekers: SprekerNaam[];
+  /** Korte trefwoorden om op te ordenen, los van het project. */
+  labels: string[];
   /** Na het samenvoegen met de slides: alle bronnen, ontdubbeld. Niet door het model gevuld. */
   bronnen?: Bron[];
 }
@@ -253,8 +255,9 @@ export function schema(projectNamen: string[]) {
     type: "object",
     additionalProperties: false,
     required: ["titel", "project", "samenvatting", "deelnemers", "besluiten", "actiepunten", "afspraken", "open_vragen", "mijn_vervolgstappen",
-      "presentaties", "genoemde_bronnen", "relevantie_praktijk", "kanttekeningen", "sprekers"],
+      "presentaties", "genoemde_bronnen", "relevantie_praktijk", "kanttekeningen", "sprekers", "labels"],
     properties: {
+      labels: { ...lijst, description: "Eén tot vier korte trefwoorden in kleine letters om notities op te ordenen, zoals 'poh', 'financiering', 'diabetes', 'huisvesting'. Geen projectnaam en geen datum." },
       titel: { type: "string", description: "Korte, specifieke titel van hooguit acht woorden, zonder datum." },
       project: { type: "string", enum: [...projectNamen, GEEN_PROJECT] },
       samenvatting: { type: "string", description: "Verhalende samenvatting in lopende tekst, een tot vier alinea's, gescheiden door een lege regel." },
@@ -359,6 +362,11 @@ const PER_SOORT: Record<Soort, string> = {
 - Onderscheid scherp tussen wat de spreker beweerde en wat bewezen is. Je beoordeelt hier nog niets; de bronnen worden later apart nagezocht.
 - Vul relevantie_praktijk: wat betekent dit voor de huisartsenpraktijk en het CVRM-kaderwerk, en raakt het een NHG-standaard?
 - Besluiten en actiepunten zijn hier zeldzaam; actiepunten van de eigenaar ("dit wil ik nalezen", "dit bespreken met de POH") wel opnemen.`,
+  notitie: `Dit is geen gesprek maar een eigen notitie van de eigenaar: wat hij zelf schreef, soms met foto's (een whiteboard, een flipover, een document) en soms met de tekst van een artikel dat hij bewaarde.
+- Wat de eigenaar zelf schreef is leidend; foto's en artikel zijn achtergrond. Er zijn geen sprekers: laat sprekers leeg, en deelnemers ook, tenzij er namen in staan.
+- Houd de samenvatting in verhouding tot wat er ligt. Drie regels van de eigenaar worden geen pagina, en wat er niet staat vul je niet aan.
+- Bij een artikel: de kern, de onderbouwing zoals die er staat, en in relevantie_praktijk wat het voor de eigenaar betekent als huisarts, kaderarts of bestuurder. Studies die het artikel noemt horen bij genoemde_bronnen.
+- Een taak in de tekst ("bellen met", "uitzoeken", "voor vrijdag") wordt een actiepunt van de eigenaar.`,
 };
 
 export function systeemPrompt(o: { mijnNaam: string; datum: string; projecten: ProjectContext[]; soort?: Soort }): string {
@@ -408,6 +416,8 @@ export function gebruikerPrompt(o: {
   transcript: string; agendaTitel?: string | null; deelnemers?: string[]; projectHint?: string | null;
   bestandsnaam?: string | null; fotos?: FotoVoorPrompt[]; markeringen?: number[];
   aantekeningen?: Aantekening[];
+  /** Bij een snelle notitie: wat de eigenaar zelf schreef, en de link die hij bewaarde. */
+  invoer?: string | null; link?: string | null;
 }): string {
   const meta = [
     o.agendaTitel && `Agenda-afspraak: ${o.agendaTitel}`,
@@ -423,7 +433,12 @@ export function gebruikerPrompt(o: {
   }).join("\n\n");
   const eigen = (o.aantekeningen ?? []).filter((a) => a.tekst)
     .map((a) => `${a.moment != null ? `[${mmss(a.moment)}] ` : ""}${a.tekst}`).join("\n");
-  return `${meta ? meta + "\n\n" : ""}${eigen ? `Aantekeningen die de eigenaar tijdens de opname zelf typte:\n${eigen}\n\n` : ""}${fotos ? `Slides en foto's die tijdens de opname zijn gemaakt:\n${fotos}\n\n` : ""}Transcript:\n${o.transcript}`;
+  const eigenNotitie = o.invoer?.trim() ? `Wat de eigenaar zelf schreef:\n${o.invoer.trim()}\n\n` : "";
+  const snel = o.invoer != null;
+  // Een snelle notitie heeft geen transcript; wel soms de tekst van een artikel.
+  const slot = !snel ? `Transcript:\n${o.transcript}`
+    : o.transcript.trim() ? `Tekst van het bewaarde artikel${o.link ? ` (${o.link})` : ""}:\n${o.transcript}` : "";
+  return `${meta ? meta + "\n\n" : ""}${eigenNotitie}${eigen ? `Aantekeningen die de eigenaar tijdens de opname zelf typte:\n${eigen}\n\n` : ""}${fotos ? `Slides en foto's die ${snel ? "bij de notitie horen" : "tijdens de opname zijn gemaakt"}:\n${fotos}\n\n` : ""}${slot}`.trim();
 }
 
 /* ------------------------------------------------------------ de foto's -- */
@@ -696,14 +711,26 @@ export function trekRecht(r: unknown, projectNamen: string[]): Uitkomst {
     }).filter((b) => b.omschrijving),
     relevantie_praktijk: tekst(o.relevantie_praktijk, 4000),
     kanttekeningen: tekstLijst(o.kanttekeningen),
+    labels: leesLabels(o.labels),
   };
+}
+
+/** Labels: kleine letters, kort, uniek, hooguit vier van het model (of twaalf van jou). */
+export function leesLabels(v: unknown, max = 4): string[] {
+  const uit: string[] = [];
+  for (const x of Array.isArray(v) ? v : []) {
+    const l = typeof x === "string" ? x.trim().toLocaleLowerCase("nl").replace(/^#/, "").replace(/\s+/g, " ").slice(0, 30) : "";
+    if (l && !uit.includes(l)) uit.push(l);
+    if (uit.length >= max) break;
+  }
+  return uit;
 }
 
 /* ------------------------------------------------------- het Google Doc -- */
 
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function docHtml(o: { r: Uitkomst; datum: string; project: string | null; agendaTitel: string | null; transcript: string; verdieping?: Verdieping | null; aantekeningen?: Aantekening[] }): string {
+export function docHtml(o: { r: Uitkomst; datum: string; project: string | null; agendaTitel: string | null; transcript: string; verdieping?: Verdieping | null; aantekeningen?: Aantekening[]; invoer?: string | null; link?: string | null }): string {
   const { r } = o;
   const opsomming = (kop: string, items: string[]) =>
     items.length ? `<h2>${kop}</h2><ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
@@ -725,12 +752,13 @@ export function docHtml(o: { r: Uitkomst; datum: string; project: string | null;
     .filter(Boolean).map(esc).join("<br>");
   return `<html><head><meta charset="utf-8"></head><body>
 <h1>${esc(r.titel)}</h1><p style="color:#59615c">${meta}</p>
+${o.link ? `<p><a href="${esc(o.link)}">${esc(o.link)}</a></p>` : ""}${o.invoer?.trim() ? `<h2>Mijn notitie</h2>${o.invoer.trim().split(/\n/).map((l) => `<p>${esc(l)}</p>`).join("")}` : ""}
 <h2>Samenvatting</h2>${r.samenvatting.split(/\n\s*\n/).map((p) => `<p>${esc(p)}</p>`).join("")}
 ${(o.aantekeningen ?? []).length ? `<h2>Mijn aantekeningen</h2><ul>${o.aantekeningen!.map((a) => `<li>${a.moment != null ? `<b>${esc(mmss(a.moment))}</b> ` : ""}${esc(a.tekst)}</li>`).join("")}</ul>` : ""}
 ${presentaties}${r.relevantie_praktijk ? `<h2>Relevantie voor de praktijk</h2><p>${esc(r.relevantie_praktijk)}</p>` : ""}${opsomming("Kanttekeningen", r.kanttekeningen)}
 ${opsomming("Besluiten", r.besluiten)}${acties}${afspraken}${opsomming("Open vragen", r.open_vragen)}${opsomming("Mijn vervolgstappen", r.mijn_vervolgstappen)}
 ${verdieping}${bronnen}
-<hr><h2>Transcript</h2>${o.transcript.split("\n").map((l) => `<p style="font-size:10pt">${esc(l)}</p>`).join("")}
+${o.transcript.trim() ? `<hr><h2>${o.invoer != null ? "Artikel" : "Transcript"}</h2>${o.transcript.split("\n").map((l) => `<p style="font-size:10pt">${esc(l)}</p>`).join("")}` : ""}
 <p style="color:#59615c;font-size:9pt">Automatisch gemaakt door BennaAssistent. Controleer namen, bedragen en besluiten vóór gebruik.</p>
 </body></html>`;
 }

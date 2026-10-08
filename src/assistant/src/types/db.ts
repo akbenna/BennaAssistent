@@ -233,7 +233,7 @@ export interface VervolgAfspraak {
   event_id?: string;
 }
 
-export type OpnameSoort = "vergadering" | "congres" | "telefoon";
+export type OpnameSoort = "vergadering" | "congres" | "telefoon" | "notitie";
 
 export interface Presentatie {
   spreker: string;
@@ -292,6 +292,7 @@ export interface Verslag {
   presentaties?: Presentatie[];
   /** Wie bij welk label hoort, als dat uit het gesprek bleek. */
   sprekers?: Array<{ label: string; naam: string; rol: string }>;
+  labels?: string[];
   relevantie_praktijk?: string;
   kanttekeningen?: string[];
   bronnen?: Bron[];
@@ -307,7 +308,7 @@ export interface Aantekening {
 export interface Opname {
   id: string;
   status: OpnameStatus;
-  bron: "app" | "upload";
+  bron: "app" | "upload" | "tekst";
   project_id: string | null;
   project_vast: boolean;
   titel: string | null;
@@ -318,7 +319,7 @@ export interface Opname {
   samenvatting: Verslag | null;
   transcript: string | null;
   drive_doc_id: string | null;
-  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string; verdieping?: string; verdieping_fout?: string };
+  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string; verdieping?: string; verdieping_fout?: string; link_fout?: string };
   fout: string | null;
   privacy_reden: string | null;
   privacy_bevestigd_op: string | null;
@@ -328,11 +329,17 @@ export interface Opname {
   soort: OpnameSoort;
   markeringen: number[];
   aantekeningen: Aantekening[];
+  /** Bij een snelle notitie: wat je zelf schreef, en de link die je bewaarde. */
+  invoer: string | null;
+  link: string | null;
+  labels: string[];
+  nascholing_punten: number | null;
+  nascholing_organisator: string | null;
   verdieping: Verdieping | null;
   verdieping_status: "gevraagd" | "bezig" | "gereed" | "fout" | null;
 }
 
-export type OpnameRegel = Pick<Opname, "id" | "status" | "titel" | "gestart_op" | "duur_sec" | "project_id" | "bron" | "soort">
+export type OpnameRegel = Pick<Opname, "id" | "status" | "titel" | "gestart_op" | "duur_sec" | "project_id" | "bron" | "soort" | "labels">
   & { projects: { naam: string; kleur: string | null } | null };
 
 export interface OpnameInstellingen {
@@ -341,3 +348,14 @@ export interface OpnameInstellingen {
   stemreferentie_pad: string | null;
   bewaartermijn_audio_dagen: number;
 }
+
+/** Het antwoord op een vraag aan je notities, met de notities waar het uit komt. */
+export interface NotitieAntwoord {
+  antwoord: string;
+  gevonden: boolean;
+  bronnen: Array<{ id: string; titel: string; datum: string; citaat: string }>;
+}
+
+/** Eén regel in het nascholingslogboek. */
+export type NascholingRegel = Pick<Opname, "id" | "titel" | "gestart_op" | "duur_sec" | "status" | "nascholing_punten" | "nascholing_organisator" | "verdieping" | "labels">
+  & { samenvatting: Pick<Verslag, "presentaties" | "relevantie_praktijk" | "bronnen"> | null };

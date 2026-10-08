@@ -5,17 +5,22 @@ import { duur, OpnameKnop } from "../components/Opname";
 import { useOpname } from "../lib/opname";
 import { useSessie } from "../lib/auth";
 import { supabase } from "../lib/supabase";
-import { bewaarOpnameInstellingen, haalOpnameInstellingen, haalOpnames, haalProjecten, verwerkOpnames } from "../lib/data";
+import { bewaarOpnameInstellingen, haalLabels, haalOpnameInstellingen, haalOpnames, haalProjecten, maakSnelleNotitie, verwerkOpnames, vraagNotities } from "../lib/data";
+import { verklein } from "../lib/beeld";
 import { naarMono, pcmNaarWav, stukkenVan } from "../lib/geluid";
 import { kiesFormaat } from "../lib/opnemer";
 import { datumKort, tijdKort } from "../lib/format";
-import type { OpnameSoort, OpnameStatus } from "../types/db";
+import type { NotitieAntwoord, OpnameSoort, OpnameStatus, Project } from "../types/db";
 
 export const SOORT_TEKST: Record<OpnameSoort, string> = {
   vergadering: "Vergadering",
   congres: "Congres of webinar",
   telefoon: "Telefoon",
+  notitie: "Notitie",
 };
+
+/** Wat je kunt opnemen; een notitie typ je. */
+const OPNAME_SOORTEN: OpnameSoort[] = ["vergadering", "congres", "telefoon"];
 
 export const OPNAME_STATUS: Record<OpnameStatus, string> = {
   opname: "Wordt opgenomen",
@@ -41,6 +46,7 @@ export function Notities() {
   const [zoek, setZoek] = useState("");
   const [gezocht, setGezocht] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [label, setLabel] = useState<string | null>(null);
   const [soort, setSoort] = useState<OpnameSoort>("vergadering");
   const [upload, setUpload] = useState<string | null>(null);
   const bestand = useRef<HTMLInputElement>(null);
@@ -49,7 +55,8 @@ export function Notities() {
   const meld = useMelding();
 
   const projecten = useAsync(() => haalProjecten(), []);
-  const lijst = useAsync(() => haalOpnames({ zoek: gezocht }), [gezocht, opname.fase]);
+  const lijst = useAsync(() => haalOpnames({ zoek: gezocht, label }), [gezocht, label, opname.fase]);
+  const labels = useAsync(() => haalLabels(), [opname.fase]);
 
   const verwerkBestand = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -97,7 +104,7 @@ export function Notities() {
           {/* De soort bepaalt de toon: bij een congres per spreker wat er werd
               beweerd en waarop, met de slides en de bronnen erbij. */}
           <div className="chips" role="radiogroup" aria-label="Wat voor gesprek is dit?" style={{ marginBottom: "0.5rem" }}>
-            {(Object.keys(SOORT_TEKST) as OpnameSoort[]).map((s) => (
+            {OPNAME_SOORTEN.map((s) => (
               <button type="button" key={s} className={`chip${soort === s ? " aan" : ""}`} role="radio" aria-checked={soort === s}
                 disabled={opname.fase !== "klaar"} onClick={() => setSoort(s)}>{SOORT_TEKST[s]}</button>
             ))}
@@ -124,11 +131,25 @@ export function Notities() {
         </div>
       </section>
 
+      <SnelleNotitie projecten={projecten.data ?? []} />
+
+      <VraagHet />
+
       <section className="sectie">
         <header>
           <h2>Notities</h2>
           <span className="aantal">{lijst.data?.length || ""}</span>
+          <Link className="mini" to="/nascholing" style={{ marginLeft: "auto" }}>Nascholingslogboek</Link>
         </header>
+        {(labels.data ?? []).length > 0 && (
+          <div className="chips" role="radiogroup" aria-label="Filter op label" style={{ marginBottom: "0.5rem" }}>
+            <button type="button" className={`chip${!label ? " aan" : ""}`} role="radio" aria-checked={!label} onClick={() => setLabel(null)}>Alle</button>
+            {(labels.data ?? []).slice(0, 20).map((l) => (
+              <button type="button" key={l.label} className={`chip${label === l.label ? " aan" : ""}`} role="radio" aria-checked={label === l.label}
+                onClick={() => setLabel(label === l.label ? null : l.label)}>#{l.label}</button>
+            ))}
+          </div>
+        )}
         <form className="zoekregel" role="search" onSubmit={(e) => { e.preventDefault(); setGezocht(zoek); }}>
           <input type="search" placeholder="Zoek op onderwerp, naam of afspraak" aria-label="Zoeken" value={zoek}
             onChange={(e) => { setZoek(e.target.value); if (!e.target.value) setGezocht(""); }} />
@@ -143,18 +164,144 @@ export function Notities() {
                 <span className="mini">{datumKort(n.gestart_op)} {tijdKort(n.gestart_op)}{n.duur_sec ? ` · ${duur(n.duur_sec)}` : ""}</span>
                 {n.soort !== "vergadering" && <Merkje>{SOORT_TEKST[n.soort]}</Merkje>}
                 {n.projects && <Merkje>{n.projects.naam}</Merkje>}
-                {n.status !== "goedgekeurd" && <Merkje kleur={OPNAME_KLEUR[n.status]}>{OPNAME_STATUS[n.status]}</Merkje>}
+                {n.status !== "goedgekeurd" && <Merkje kleur={OPNAME_KLEUR[n.status]}>{n.bron === "tekst" && (n.status === "opname" || n.status === "verwerken") ? "Wordt verwerkt" : OPNAME_STATUS[n.status]}</Merkje>}
+                {(n.labels ?? []).slice(0, 3).map((l) => <span className="mini" key={l}>#{l}</span>)}
               </div>
             </Link>
           ))}
         </div>
         {!lijst.laden && (lijst.data ?? []).length === 0 && (
-          <Leeg teken="●">{gezocht ? "Niets gevonden." : "Nog geen notities. Neem je eerste overleg op met de knop hierboven."}</Leeg>
+          <Leeg teken="●">{gezocht || label ? "Niets gevonden." : "Nog geen notities. Neem je eerste overleg op met de knop hierboven."}</Leeg>
         )}
       </section>
 
       <StemEnBewaren />
     </>
+  );
+}
+
+/** Labels uit een vrij veld: "poh, #financiering diabetes" wordt drie labels. */
+export function leesLabelVeld(v: string): string[] {
+  const uit: string[] = [];
+  for (const d of v.split(/[,;\s]+/)) {
+    const l = d.trim().toLocaleLowerCase("nl").replace(/^#+/, "").slice(0, 30);
+    if (l && !uit.includes(l)) uit.push(l);
+  }
+  return uit.slice(0, 12);
+}
+
+/**
+ * Een notitie zonder opname: wat je typt, een foto van een whiteboard of
+ * flipover, een link naar een artikel. Hij gaat door dezelfde verwerking als
+ * een opname, dus ook hier worden taken voorstellen en komt er een Google Doc.
+ */
+function SnelleNotitie({ projecten }: { projecten: Project[] }) {
+  const { sessie } = useSessie();
+  const [tekst, setTekst] = useState("");
+  const [link, setLink] = useState("");
+  const [labels, setLabels] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [fotos, setFotos] = useState<File[]>([]);
+  const [bezig, setBezig] = useState(false);
+  const camera = useRef<HTMLInputElement>(null);
+  const naar = useNavigate();
+  const meld = useMelding();
+  const linkFout = link.trim() && !/^https?:\/\/[^\s]+\.[^\s]+$/i.test(link.trim());
+  const leeg = !tekst.trim() && !link.trim() && !fotos.length;
+
+  const bewaar = async () => {
+    if (leeg || linkFout || !sessie) return;
+    setBezig(true);
+    try {
+      const klein = await Promise.all(fotos.map((f) => verklein(f)));
+      const id = await maakSnelleNotitie({
+        eigenaar: sessie.user.id, tekst: tekst.trim(), link: link.trim() || null,
+        projectId, labels: leesLabelVeld(labels), fotos: klein,
+      });
+      naar(`/notities/${id}`);
+    } catch (e) {
+      meld(e instanceof Error ? e.message : String(e), "fout");
+      setBezig(false);
+    }
+  };
+
+  return (
+    <section className="sectie">
+      <header><h2>Notitie</h2></header>
+      <form className="kaart snelnotitie" onSubmit={(e) => { e.preventDefault(); void bewaar(); }}>
+        <textarea rows={4} value={tekst} onChange={(e) => setTekst(e.target.value)} maxLength={20000}
+          placeholder="Wat wil je vastleggen? Een gedachte, een afspraak, wat er op het whiteboard stond." aria-label="Notitie" />
+        <input type="url" inputMode="url" value={link} onChange={(e) => setLink(e.target.value)}
+          placeholder="Link naar een artikel (mag leeg)" aria-label="Link" aria-invalid={Boolean(linkFout)} />
+        {linkFout && <p className="mini" style={{ margin: 0, color: "var(--fout)" }}>Dat is geen link die met http of https begint.</p>}
+        <input value={labels} onChange={(e) => setLabels(e.target.value)} placeholder="Labels, bijvoorbeeld poh, financiering (mag leeg)" aria-label="Labels" />
+        <div className="chips" role="radiogroup" aria-label="Bij welk project hoort dit?">
+          <button type="button" className={`chip${!projectId ? " aan" : ""}`} role="radio" aria-checked={!projectId} onClick={() => setProjectId(null)}>Automatisch</button>
+          {projecten.map((p) => (
+            <button type="button" className={`chip${projectId === p.id ? " aan" : ""}`} role="radio" key={p.id} aria-checked={projectId === p.id} onClick={() => setProjectId(p.id)}>{p.naam}</button>
+          ))}
+        </div>
+        <div className="knoprij" style={{ flexWrap: "wrap" }}>
+          <button type="button" className="knop" onClick={() => camera.current?.click()}>
+            Foto{fotos.length ? `'s: ${fotos.length}` : " toevoegen"}
+          </button>
+          <input ref={camera} type="file" accept="image/*" multiple hidden
+            onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; setFotos((x) => [...x, ...f].slice(0, 10)); }} />
+          {fotos.length > 0 && <button type="button" className="knop klein" onClick={() => setFotos([])}>Foto's weg</button>}
+          <button type="submit" className="knop primair" disabled={leeg || Boolean(linkFout) || bezig}>{bezig ? "Bewaren…" : "Bewaar"}</button>
+        </div>
+        <p className="mini" style={{ margin: 0 }}>De assistent maakt er een nette notitie van, zet taken als voorstel klaar en haalt bij een link de tekst van het artikel op.</p>
+      </form>
+    </section>
+  );
+}
+
+/**
+ * Een vraag aan al je notities. Het antwoord komt alleen uit je eigen
+ * notities, met bij elke bewering het nummer van de notitie waar het staat.
+ */
+function VraagHet() {
+  const [vraag, setVraag] = useState("");
+  const [antwoord, setAntwoord] = useState<NotitieAntwoord | null>(null);
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState<string | null>(null);
+
+  const stel = async () => {
+    if (vraag.trim().length < 3) return;
+    setBezig(true); setFout(null); setAntwoord(null);
+    try { setAntwoord(await vraagNotities(vraag.trim())); }
+    catch (e) { setFout(e instanceof Error ? e.message : String(e)); }
+    finally { setBezig(false); }
+  };
+
+  return (
+    <section className="sectie">
+      <header><h2>Vraag het je notities</h2></header>
+      <form className="kaart vraaghet" onSubmit={(e) => { e.preventDefault(); void stel(); }}>
+        <div className="knoprij">
+          <input value={vraag} onChange={(e) => setVraag(e.target.value)} maxLength={500} style={{ flex: 1, minWidth: 0 }}
+            placeholder="Wat spraken we met de zorggroep af over de POH-uren?" aria-label="Vraag" />
+          <button type="submit" className="knop primair" disabled={bezig || vraag.trim().length < 3}>{bezig ? "Zoeken…" : "Vraag"}</button>
+        </div>
+        {fout && <p className="mini" role="alert" style={{ color: "var(--fout)", margin: 0 }}>{fout}</p>}
+        {antwoord && (
+          <div className="antwoord" role="status">
+            {antwoord.antwoord.split(/\n\s*\n/).map((p, i) => <p key={i}>{p}</p>)}
+            {antwoord.bronnen.length > 0 && (
+              <ol className="mini">
+                {antwoord.bronnen.map((b) => (
+                  <li key={b.id}>
+                    <Link to={`/notities/${b.id}`}>{b.titel}</Link>, {datumKort(b.datum)}
+                    {b.citaat && <><br /><i>"{b.citaat}"</i></>}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {!antwoord.gevonden && <p className="mini" style={{ margin: 0 }}>Niets gevonden betekent: niet in een afgeronde notitie. Notities die nog verwerkt worden, doen nog niet mee.</p>}
+          </div>
+        )}
+      </form>
+    </section>
   );
 }
 

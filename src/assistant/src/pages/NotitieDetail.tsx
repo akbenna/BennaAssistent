@@ -7,13 +7,13 @@ import { STATUS_TEKST } from "../components/TaakKaart";
 import { useSessie } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 import {
-  haalFotos, haalOpname, haalOpnameInstellingen, haalProjecten, haalTakenVanOpname, maakTaakUitOpname, voegFotoToe,
+  haalFotos, haalOpname, haalOpnameInstellingen, haalProjecten, haalTakenVanOpname, haalVerwant, maakTaakUitOpname, voegFotoToe,
   notitieActie, verwerkOpnames, verwijderOpname, werkOpnameBij,
 } from "../lib/data";
 import { datumKort, datumLang, tijdKort } from "../lib/format";
 import { verklein } from "../lib/beeld";
 import { regelBij } from "../lib/transcript";
-import { OPNAME_STATUS, SOORT_TEKST } from "./Notities";
+import { leesLabelVeld, OPNAME_STATUS, SOORT_TEKST } from "./Notities";
 import type { Foto, Oordeel, Opname, OpnameSoort, OpnameStatus } from "../types/db";
 
 const OORDEEL_KLEUR: Record<Oordeel, "groen" | "amber" | "rood" | undefined> = {
@@ -48,6 +48,8 @@ export function NotitieDetail() {
   const taken = useAsync(() => haalTakenVanOpname(n.data?.item_id ?? null), [n.data?.item_id, ronde]);
   const fotos = useAsync(() => haalFotos(id), [id, ronde]);
   const fotoKiezer = useRef<HTMLInputElement>(null);
+  const labelSleutel = (n.data?.labels ?? []).join(",");
+  const verwant = useAsync(() => haalVerwant(id, n.data?.labels ?? []), [id, labelSleutel]);
 
   const notitie = n.data;
   useEffect(() => { if (notitie) setTitel((t) => t || notitie.titel || ""); }, [notitie]);
@@ -91,20 +93,27 @@ export function NotitieDetail() {
       audio_verwijderen_na: new Date(Date.now() + dagen * 86_400_000).toISOString(),
     });
   }, "Nagelezen. De audio wordt na de bewaartermijn gewist.");
+  // Een snelle notitie heeft soms geen transcript, maar wel iets om samen te vatten.
+  const heeftInhoud = Boolean(notitie.transcript) || (notitie.bron === "tekst" && Boolean(r));
+  const opnieuw = heeftInhoud && !BEZIG.includes(notitie.status) && notitie.status !== "geweigerd";
   const kiesProject = (pid: string) => doe(async () => {
     await werkOpnameBij(notitie.id, {
       project_id: pid || null, project_vast: Boolean(pid),
-      ...(notitie.transcript && !BEZIG.includes(notitie.status) && notitie.status !== "geweigerd" ? { status: "samenvatten" as const } : {}),
+      ...(opnieuw ? { status: "samenvatten" as const } : {}),
     });
-    if (notitie.transcript) await verwerkOpnames();
+    if (opnieuw) await verwerkOpnames();
   });
   const kiesSoort = (soort: OpnameSoort) => doe(async () => {
     await werkOpnameBij(notitie.id, {
       soort,
-      ...(notitie.transcript && !BEZIG.includes(notitie.status) && notitie.status !== "geweigerd" ? { status: "samenvatten" as const } : {}),
+      ...(opnieuw ? { status: "samenvatten" as const } : {}),
     });
-    if (notitie.transcript) await verwerkOpnames();
-  }, "Wordt opnieuw samengevat.");
+    if (opnieuw) await verwerkOpnames();
+  }, opnieuw ? "Wordt opnieuw samengevat." : undefined);
+  const zetLabels = (v: string) => {
+    const l = leesLabelVeld(v);
+    if (l.join(",") !== (notitie.labels ?? []).join(",")) void wijzig({ labels: l });
+  };
   const fotoAchteraf = (f: File) => doe(async () => {
     if (!sessie) return;
     await voegFotoToe(notitie.id, sessie.user.id, await verklein(f), null);
@@ -139,6 +148,19 @@ export function NotitieDetail() {
         {notitie.agenda_titel ? ` · agenda: ${notitie.agenda_titel}` : ""}
       </p>
 
+      {notitie.bron === "tekst" && (notitie.invoer || notitie.link) && (
+        <div className="kaart eigen" style={{ marginBottom: "0.8rem" }}>
+          {notitie.invoer && <p className="opschrift" style={{ margin: "0 0 0.3rem" }}>Mijn notitie</p>}
+          {notitie.invoer?.split(/\n/).map((l, i) => <p key={i} style={{ margin: "0 0 0.3rem" }}>{l}</p>)}
+          {notitie.link && /^https?:\/\//i.test(notitie.link) && (
+            <p className="mini" style={{ margin: 0, overflowWrap: "anywhere" }}>
+              <a href={notitie.link} target="_blank" rel="noreferrer">{notitie.link}</a>
+              {notitie.modellen?.link_fout && <span style={{ color: "var(--fout)" }}> · {notitie.modellen.link_fout}</span>}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="kaart rij2" style={{ marginBottom: "0.8rem" }}>
         <label className="veld" style={{ marginBottom: 0 }}>
           <span>Soort</span>
@@ -146,6 +168,28 @@ export function NotitieDetail() {
             {(Object.keys(SOORT_TEKST) as OpnameSoort[]).map((s) => <option key={s} value={s}>{SOORT_TEKST[s]}</option>)}
           </select>
         </label>
+        <label className="veld" style={{ marginBottom: 0, gridColumn: "1 / -1" }}>
+          <span>Labels</span>
+          <input defaultValue={(notitie.labels ?? []).join(", ")} key={labelSleutel} placeholder="poh, financiering"
+            onBlur={(e) => zetLabels(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+        </label>
+        {notitie.soort === "congres" && (
+          <>
+            <label className="veld" style={{ marginBottom: 0 }}>
+              <span>Organisator (nascholing)</span>
+              <input defaultValue={notitie.nascholing_organisator ?? ""} key={`o${notitie.nascholing_organisator ?? ""}`} maxLength={200}
+                onBlur={(e) => { const v = e.target.value.trim() || null; if (v !== notitie.nascholing_organisator) void wijzig({ nascholing_organisator: v }); }} />
+            </label>
+            <label className="veld" style={{ marginBottom: 0 }}>
+              <span>Accreditatiepunten</span>
+              <input type="number" min={0} max={99} step={0.5} inputMode="decimal" defaultValue={notitie.nascholing_punten ?? ""} key={`p${notitie.nascholing_punten ?? ""}`}
+                onBlur={(e) => {
+                  const v = e.target.value.trim() === "" ? null : Math.round(Number(e.target.value.replace(",", ".")) * 2) / 2;
+                  if (v === null || (Number.isFinite(v) && v >= 0 && v <= 99)) { if (v !== notitie.nascholing_punten) void wijzig({ nascholing_punten: v }); }
+                }} />
+            </label>
+          </>
+        )}
         <label className="veld" style={{ marginBottom: 0 }}>
           <span>Project</span>
           <select value={notitie.project_id ?? ""} onChange={(e) => void kiesProject(e.target.value)} disabled={bezig || BEZIG.includes(notitie.status)}>
@@ -367,9 +411,26 @@ export function NotitieDetail() {
         </section>
       )}
 
+      {(verwant.data ?? []).length > 0 && (
+        <section className="sectie">
+          <header><h2>Verwant</h2></header>
+          <div className="kaart">
+            {(verwant.data ?? []).map((v) => (
+              <div className="brief-regel" key={v.id}>
+                <span className="tijd">{datumKort(v.gestart_op)}</span>
+                <span className="groei">
+                  <Link to={`/notities/${v.id}`}>{v.titel || "Zonder titel"}</Link>
+                  <span className="mini"> · {(v.labels ?? []).filter((l) => notitie.labels.includes(l)).map((l) => `#${l}`).join(" ")}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {notitie.transcript && (
         <details className="uitleg transcript" open={notitie.status === "geweigerd"}>
-          <summary>Transcript</summary>
+          <summary>{notitie.bron === "tekst" ? "Tekst van het artikel" : "Transcript"}</summary>
           <pre>{notitie.transcript}</pre>
         </details>
       )}

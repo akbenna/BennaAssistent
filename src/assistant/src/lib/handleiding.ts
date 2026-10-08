@@ -64,7 +64,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
   {
     pad: "/notities",
     titel: "Notities",
-    kern: "Een vergadering, overleg of telefoongesprek opnemen, en wat eruit komt meteen omzetten in werk.",
+    kern: "Een vergadering, overleg of telefoongesprek opnemen of een notitie typen, wat eruit komt meteen omzetten in werk, en later je notities iets vragen.",
     delen: [
       {
         kop: "Opnemen",
@@ -86,6 +86,33 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         tekst: [
           "Kies vóór het opnemen Congres of webinar. De notitie wordt dan wetenschappelijk: per spreker de kernboodschappen en de onderbouwing zoals die werd gebracht, de relevantie voor de huisartsenpraktijk en het kaderwerk, en kanttekeningen. Tijdens de opname staan er in de balk bovenaan, naast Typ, twee knoppen: Slide maakt een foto van wat er op het scherm staat, de ster markeert een moment dat je wilt terugvinden. Allebei krijgen ze het moment in de opname mee; een slide wordt al gelezen terwijl de lezing doorloopt.",
           "Op de slides en in het gesprek zoekt de assistent naar genoemde studies. Vindt hij er, dan vraagt hij of hij ze moet nazoeken. Zeg je ja, dan zoekt hij ze op in PubMed, legt elke bewering naast het abstract en zet er een oordeel bij: bevestigd, genuanceerd, afwijkend of niet te beoordelen. De bron en de citatie komen van PubMed zelf; het model leest alleen het abstract, en zonder abstract geeft het geen oordeel.",
+        ],
+      },
+      {
+        kop: "Notitie zonder opname",
+        tekst: [
+          "Onder Notitie typ je wat je wilt vastleggen: een gedachte, een afspraak bij de koffieautomaat, wat er op het whiteboard stond. Een foto van dat whiteboard of een flipover kan erbij, en een link naar een artikel ook. De assistent haalt de tekst van dat artikel op, alleen van een gewone webpagina: wat achter een inlogscherm zit of pas in de browser wordt opgebouwd, lukt niet, en dan staat dat bij de link.",
+          "Daarna gaat de notitie door dezelfde verwerking als een opname: het privacyfilter, een samenvatting naar verhouding (drie regels worden geen pagina), taken als voorstel, en een Google Doc in de projectmap. Wat jij schreef is leidend; foto's en artikel zijn achtergrond.",
+        ],
+      },
+      {
+        kop: "Labels en verwante notities",
+        tekst: [
+          "Naast het project kan een notitie labels hebben, zoals poh, financiering of diabetes. Geef je er zelf geen, dan stelt de assistent er een paar voor; geef je ze wel, dan blijven ze zoals jij ze zette. Op de lijst filter je erop, en onderaan een notitie staan de notities die een label delen, nieuwste eerst.",
+        ],
+      },
+      {
+        kop: "Vraag het je notities",
+        tekst: [
+          "Stel een vraag in gewone taal, bijvoorbeeld \"wat spraken we met de zorggroep af over de POH-uren?\". De database zoekt eerst de notities die het best passen; alleen die gaan naar het taalmodel, met de samenvatting, de besluiten en de stukken transcript waar je woorden in vallen. Het antwoord komt uitsluitend uit je eigen notities, met achter elke bewering het nummer van de notitie, en daaronder de notities zelf met een letterlijk citaat.",
+          "Staat het er niet in, dan zegt de assistent dat, en vindt het zoeken niets, dan wordt er geen taalmodel aangeroepen. Alleen afgeronde notities doen mee.",
+        ],
+      },
+      {
+        kop: "Nascholingslogboek",
+        tekst: [
+          "Elke notitie van het soort Congres of webinar staat in het nascholingslogboek, te openen vanaf de lijst met notities. Per jaar zie je hoeveel bijeenkomsten het waren, hoeveel uur je opnam en hoeveel accreditatiepunten je hebt ingevuld. Organisator en punten vul je op de notitie zelf in; de uren zijn de opnametijd en dus niet per se de lengte van het programma.",
+          "Voor de herregistratie als huisarts telt 200 uur geaccrediteerde nascholing in vijf jaar, en dan wat de organisator in GAIA heeft bijgeschreven. Dit logboek vervangt GAIA niet. Het is je eigen administratie ernaast, met wat GAIA niet heeft: de onderwerpen, wat het voor de praktijk betekent en hoe de genoemde studies het hielden bij het nazoeken. Met Bewaar als CSV open je het in Excel; met Afdrukken maak je er een PDF van.",
         ],
       },
       {
@@ -222,6 +249,6 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
 export function hoofdstukVoor(pad: string): Hoofdstuk | null {
   // Delen valt onder Taken: het is dezelfde vorm, alleen binnengekomen via het
   // deelmenu van de telefoon.
-  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") ? "/notities" : pad;
+  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") || pad === "/nascholing" ? "/notities" : pad;
   return HOOFDSTUKKEN.find((h) => h.pad === gezocht) ?? null;
 }

@@ -743,3 +743,13 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
 .voorbereiding { margin: 0.2rem 0 0.8rem; padding: 0.7rem 0.8rem; background: var(--vlak2); border-radius: var(--radius-klein); display: grid; gap: 0.6rem; }
 .voorbereiding-blok h3 { margin: 0 0 0.2rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
 .voorbereiding-blok ul { margin: 0; padding-left: 1.1rem; }
+
+.snelnotitie, .vraaghet { display: grid; gap: 0.5rem; }
+.snelnotitie textarea, .snelnotitie input, .vraaghet input { font: inherit; padding: 0.55rem 0.7rem; border: 1px solid var(--lijn); border-radius: var(--radius-klein); background: var(--vlak); color: var(--ink); width: 100%; box-sizing: border-box; }
+.snelnotitie textarea { resize: vertical; min-height: 5.5rem; }
+.vraaghet .antwoord p { margin: 0 0 0.5rem; }
+.vraaghet .antwoord ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; }
+
+.nascholing-totaal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; }
+.nascholing-totaal b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+@media print { .geen-print, nav, .opnamebalk { display: none !important; } }
