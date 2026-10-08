@@ -29,7 +29,11 @@ import { checkPrivacy, type FilterRow } from "../_shared/privacy.ts";
 import { kiesProject } from "../_shared/verwerk.ts";
 import { schrijfUit } from "../_shared/spraak.ts";
 import { vatSamen } from "../_shared/samenvatten.ts";
-import { docHtml, GEEN_PROJECT, maakTranscript, plaatsDeel, type RuwSegment, type Segment, type Uitkomst } from "../_shared/notities.ts";
+import { leesFoto, verdiep } from "../_shared/bronnen.ts";
+import {
+  docHtml, GEEN_PROJECT, maakTranscript, plaatsDeel, SOORTEN, verzamelBronnen,
+  type FotoAnalyse, type FotoVoorPrompt, type RuwSegment, type Segment, type Soort, type Uitkomst, type Verdieping,
+} from "../_shared/notities.ts";
 
 /* De Edge Function mag langer, maar een ronde die halverwege een
    samenvatting wordt afgebroken heeft voor niets betaald. Ruim eronder blijven,
@@ -113,18 +117,53 @@ async function deelMislukt(admin: Admin, deel: Deel, e: unknown) {
   }
 }
 
+/* -------------------------------------------------------------- foto's lezen */
+
+interface Foto { id: string; owner_id: string; notitie_id: string; volgnummer: number; pad: string; pogingen: number }
+
+/* Een foto van een slide gaat naar een taalmodel dat beelden leest. Wat eruit
+   komt gaat langs hetzelfde privacyfilter als een transcript: een casus met
+   een geboortedatum op een slide hoort niet in een notitie. */
+async function leesFotoUit(admin: Admin, f: Foto) {
+  const { data, error } = await admin.storage.from(BUCKET).download(f.pad);
+  if (error || !data) throw new Error(`Downloaden mislukt: ${error?.message ?? "leeg"}`);
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  const mime = data.type && data.type.startsWith("image/") ? data.type : "image/jpeg";
+  const { analyse, dienst, verbruik, uitval } = await leesFoto({ mime, base64: naarBase64(bytes) });
+  const { data: filters } = await admin.from("filters").select("soort,waarde,actief").eq("owner_id", f.owner_id);
+  const pc = checkPrivacy({ from: "", subject: analyse.kern, text: analyse.tekst }, (filters ?? []) as FilterRow[]);
+  const patient = /patiëntgegevens/i.test(analyse.kern);
+  if (pc.excluded || patient) {
+    await admin.from("notitie_fotos").update({ status: "geweigerd", lezing: null, dienst, fout: pc.reason ?? "mogelijk patiëntgegevens op de foto" }).eq("id", f.id);
+  } else {
+    await admin.from("notitie_fotos").update({ status: "gereed", lezing: analyse, dienst, fout: uitval ? `uitval: ${uitval}` : null }).eq("id", f.id);
+  }
+  await audit(admin, f.owner_id, "notitie_foto_gelezen", {
+    object_type: "notitie", object_id: f.notitie_id, model: dienst,
+    details: { foto: f.volgnummer, geweigerd: pc.excluded || patient, referenties: analyse.referenties.length, ...verbruik },
+  });
+}
+
+async function fotoMislukt(admin: Admin, f: Foto, e: unknown) {
+  const reden = String(e instanceof Error ? e.message : e).slice(0, 500);
+  // Een foto die niet te lezen is houdt de notitie niet tegen; hij telt dan gewoon niet mee.
+  await admin.from("notitie_fotos").update({ status: f.pogingen >= 3 ? "fout" : "klaar", fout: reden }).eq("id", f.id);
+}
+
 /* ------------------------------------------------------------ 2. samenvatten */
 
 /** Klaar om samen te vatten: gestopt, minstens één deel, en alle delen uit. */
 async function zetKlaarVoorSamenvatten(admin: Admin, eigenaar: string | null) {
-  let q = admin.from("notities").select("id, notitie_delen(status)").eq("status", "verwerken").limit(20);
+  let q = admin.from("notities").select("id, notitie_delen(status), notitie_fotos(status)").eq("status", "verwerken").limit(20);
   if (eigenaar) q = q.eq("owner_id", eigenaar);
   const { data } = await q;
-  for (const n of (data ?? []) as Array<{ id: string; notitie_delen: Array<{ status: string }> }>) {
+  for (const n of (data ?? []) as Array<{ id: string; notitie_delen: Array<{ status: string }>; notitie_fotos: Array<{ status: string }> }>) {
     const delen = n.notitie_delen ?? [];
+    // Een foto die nog gelezen wordt hoort in de samenvatting; daar wachten we op.
+    const fotosKlaar = (n.notitie_fotos ?? []).every((f) => f.status !== "klaar" && f.status !== "bezig");
     if (delen.length === 0) {
       await admin.from("notities").update({ status: "fout", fout: "Opname zonder geluid" }).eq("id", n.id);
-    } else if (delen.every((d) => d.status === "gereed")) {
+    } else if (delen.every((d) => d.status === "gereed") && fotosKlaar) {
       await admin.from("notities").update({ status: "samenvatten" }).eq("id", n.id).eq("status", "verwerken");
     }
   }
@@ -255,13 +294,21 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   const hintId = vast?.id ?? kiesProject(projecten, (agenda?.deelnemers ?? []).join(" "), agenda?.titel ?? "", n.titel ?? "");
   const hint = projecten.find((p) => p.id === hintId) ?? null;
 
+  const { data: fotoRijen } = await admin.from("notitie_fotos").select("volgnummer,moment_sec,lezing")
+    .eq("notitie_id", n.id).eq("status", "gereed").order("volgnummer");
+  const fotos: FotoVoorPrompt[] = ((fotoRijen ?? []) as Array<{ volgnummer: number; moment_sec: number | null; lezing: FotoAnalyse }>)
+    .map((f) => ({ volgnummer: f.volgnummer, moment: f.moment_sec, analyse: f.lezing }));
+  const markeringen = (Array.isArray(n.markeringen) ? n.markeringen : []).map(Number).filter(Number.isFinite);
+  const soort: Soort = SOORTEN.includes(n.soort) ? n.soort : "vergadering";
+
   const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
   const { uitkomst: r, dienst, verbruik, uitval } = await vatSamen({
-    transcript, mijnNaam: inst.mijn_naam, datum,
+    transcript, mijnNaam: inst.mijn_naam, datum, soort, fotos, markeringen,
     projecten: vast ? [vast] : projecten,
     agendaTitel: agenda?.titel ?? null, deelnemers: agenda?.deelnemers ?? [],
     projectHint: hint?.naam ?? null, bestandsnaam: (n.modellen?.bestandsnaam as string | undefined) ?? null,
   });
+  r.bronnen = verzamelBronnen(fotos, r.genoemde_bronnen);
   modellen.samenvatting = dienst;
   if (uitval) modellen.samenvatting_uitval = uitval;
   const project = vast ?? projecten.find((p) => p.naam === r.project && r.project !== GEEN_PROJECT) ?? hint;
@@ -304,6 +351,9 @@ async function vatNotitieSamen(admin: Admin, n: any) {
     project_id: project?.id ?? null, deelnemers: r.deelnemers.length ? r.deelnemers : agenda?.deelnemers ?? [],
     agenda_event_id: agenda?.id ?? null, agenda_titel: agenda?.titel ?? null,
     drive_doc_id: docId, item_id: item.id, modellen,
+    // Een nieuwe samenvatting kan andere bronnen hebben; een oude verdieping
+    // zou dan beweringen beoordelen die er niet meer staan.
+    verdieping: null, verdieping_status: null,
   }).eq("id", n.id);
   if (error) throw new Error(error.message);
   await audit(admin, owner, "notitie_samengevat", {
@@ -340,9 +390,46 @@ async function zetVoorstellen(admin: Admin, owner: string, itemId: string, r: Ui
   }
 }
 
+/* ------------------------------------------------------------- verdiepen -- */
+
+/** Op verzoek: de bronnen nazoeken in PubMed en naast de beweringen leggen. */
+async function verdiepNotitie(admin: Admin, n: any) {
+  const owner = n.owner_id as string;
+  const r = n.samenvatting as Uitkomst | null;
+  const bronnen = r?.bronnen ?? [];
+  const modellen: Record<string, unknown> = { ...(n.modellen ?? {}) };
+  if (!r || !bronnen.length) {
+    await admin.from("notities").update({ verdieping_status: "fout", modellen: { ...modellen, verdieping_fout: "Er zijn geen bronnen om na te zoeken." } }).eq("id", n.id);
+    return;
+  }
+  const { verdieping, verbruik, uitval } = await verdiep(bronnen);
+  modellen.verdieping = verdieping.dienst;
+  delete modellen.verdieping_fout;
+  if (uitval) modellen.verdieping_uitval = uitval;
+
+  // Het Google Doc opnieuw, nu met de nagezochte bronnen erin.
+  let docId: string | null = n.drive_doc_id ?? null;
+  try {
+    const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
+    const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+    const { data: p } = n.project_id ? await admin.from("projects").select("naam").eq("id", n.project_id).maybeSingle() : { data: null };
+    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: p?.naam ?? null, agendaTitel: n.agenda_titel, transcript: n.transcript ?? "", verdieping }), p?.naam ?? null, docId);
+  } catch (e) {
+    modellen.drive_fout = String(e).slice(0, 300);
+  }
+  await admin.from("notities").update({ verdieping, verdieping_status: "gereed", drive_doc_id: docId, modellen }).eq("id", n.id);
+  await audit(admin, owner, "notitie_verdiept", {
+    object_type: "notitie", object_id: n.id, model: verdieping.dienst,
+    details: { bronnen: verdieping.bronnen.length, gevonden: verdieping.bronnen.filter((b: Verdieping["bronnen"][number]) => b.gevonden).length, ...verbruik },
+  });
+}
+
 /* --------------------------------------------------------------- 3. opruimen */
 
 async function ruimOp(admin: Admin) {
+  // Een verdieping die een kwartier 'bezig' staat is van een ronde die omviel.
+  await admin.from("notities").update({ verdieping_status: "gevraagd" }).eq("verdieping_status", "bezig")
+    .lt("updated_at", new Date(Date.now() - 15 * 60_000).toISOString());
   // Een samenvatting die een kwartier 'bezig' staat is van een ronde die omviel.
   await admin.from("notities").update({ status: "samenvatten" }).eq("status", "bezig")
     .lt("updated_at", new Date(Date.now() - 15 * 60_000).toISOString());
@@ -389,7 +476,7 @@ Deno.serve(async (req) => {
   if (!cron && !eigenaar) return json({ fout: "geen toegang" }, 401);
 
   const tot = Date.now() + BUDGET_MS;
-  const verslag = { delen: 0, samengevat: 0, fouten: [] as string[] };
+  const verslag = { delen: 0, fotos: 0, samengevat: 0, verdiept: 0, fouten: [] as string[] };
   const stemCache = new Map<string, string | null>();
 
   if (cron) {
@@ -407,6 +494,20 @@ Deno.serve(async (req) => {
     } catch (e) {
       await deelMislukt(admin, deel, e);
       verslag.fouten.push(`deel ${deel.volgnummer}: ${String(e).slice(0, 200)}`);
+    }
+  }
+
+  while (Date.now() < tot - 30_000) {
+    const { data, error } = await admin.rpc("pak_notitie_foto", { p_eigenaar: eigenaar });
+    if (error) { verslag.fouten.push(error.message); break; }
+    const foto = ((data ?? []) as Foto[])[0];
+    if (!foto) break;
+    try {
+      await leesFotoUit(admin, foto);
+      verslag.fotos++;
+    } catch (e) {
+      await fotoMislukt(admin, foto, e);
+      verslag.fouten.push(`foto ${foto.volgnummer}: ${String(e).slice(0, 200)}`);
     }
   }
 
@@ -430,6 +531,25 @@ Deno.serve(async (req) => {
       await admin.from("notities").update({ status: "fout", fout: reden }).eq("id", n.id);
       await audit(admin, n.owner_id, "notitie_fout", { object_type: "notitie", object_id: n.id, details: { reden } });
       verslag.fouten.push(`notitie: ${reden.slice(0, 200)}`);
+    }
+  }
+
+  while (Date.now() < tot - SAMENVATTEN_MIN_MS) {
+    let q = admin.from("notities").select("*").eq("verdieping_status", "gevraagd").order("updated_at").limit(1);
+    if (eigenaar) q = q.eq("owner_id", eigenaar);
+    const { data } = await q;
+    const n = data?.[0];
+    if (!n) break;
+    const { data: geclaimd } = await admin.from("notities").update({ verdieping_status: "bezig" })
+      .eq("id", n.id).eq("verdieping_status", "gevraagd").select("id");
+    if (!geclaimd?.length) continue;
+    try {
+      await verdiepNotitie(admin, n);
+      verslag.verdiept++;
+    } catch (e) {
+      const reden = String(e instanceof Error ? e.message : e).slice(0, 500);
+      await admin.from("notities").update({ verdieping_status: "fout", modellen: { ...(n.modellen ?? {}), verdieping_fout: reden } }).eq("id", n.id);
+      verslag.fouten.push(`verdieping: ${reden.slice(0, 200)}`);
     }
   }
 

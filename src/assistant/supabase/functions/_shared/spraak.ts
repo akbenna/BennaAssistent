@@ -1,7 +1,7 @@
 /**
  * SPRAAK NAAR TEKST
  *
- * OpenAI eerst, via het EU-project, met het model dat sprekers uit elkaar
+ * Standaard OpenAI eerst (SPRAAK_VOLGORDE, zie `diensten.ts`), via het EU-project, met het model dat sprekers uit elkaar
  * houdt en jouw stem herkent aan een referentie van acht seconden. Valt dat
  * weg, dan Mistral Voxtral, ook in de EU, maar zonder sprekers.
  *
@@ -10,6 +10,7 @@
  * storing bij OpenAI het werk niet stil, en draagt Claude niet de hele last.
  */
 import { extensieVoor, type RuwSegment } from "./notities.ts";
+import { opVolgorde, volgorde } from "./diensten.ts";
 
 const env = (k: string, d = "") => Deno.env.get(k) || d;
 const wacht = (ms: number) => new Promise((k) => setTimeout(k, ms));
@@ -76,18 +77,12 @@ async function viaMistral(geluid: Uint8Array<ArrayBuffer>, mime: string): Promis
   return [{ spreker: null, start: 0, eind: null, tekst: String(data.text ?? "") }];
 }
 
-/** Schrijft één deel uit. Geeft de stukken tekst en welke dienst het deed. */
+/** Schrijft één deel uit, in de volgorde van SPRAAK_VOLGORDE. Geeft de stukken tekst en welke dienst het deed. */
 export async function schrijfUit(geluid: Uint8Array<ArrayBuffer>, mime: string, stem: Stem): Promise<{ segmenten: RuwSegment[]; dienst: string; uitval?: string }> {
-  let uitval: string | undefined;
-  if (env("OPENAI_API_KEY")) {
-    try {
-      return { segmenten: await viaOpenAI(geluid, mime, stem), dienst: `openai:${openaiModel()}` };
-    } catch (e) {
-      uitval = String(e instanceof Error ? e.message : e).slice(0, 300);
-      if (!env("MISTRAL_API_KEY")) throw e;
-    }
-  }
-  if (!env("MISTRAL_API_KEY")) throw new Error("Geen spraakdienst ingesteld: zet OPENAI_API_KEY en/of MISTRAL_API_KEY");
-  const segmenten = await viaMistral(geluid, mime);
-  return { segmenten, dienst: `mistral:${env("MISTRAL_TRANSCRIBE_MODEL", "voxtral-mini-latest")}`, ...(uitval ? { uitval } : {}) };
+  const diensten = volgorde("SPRAAK_VOLGORDE", ["openai", "mistral"], ["openai", "mistral"] as const);
+  const { uitkomst, dienst, uitval } = await opVolgorde(diensten,
+    (d) => d === "openai" ? viaOpenAI(geluid, mime, stem) : viaMistral(geluid, mime),
+    "Geen spraakdienst ingesteld: zet OPENAI_API_KEY en/of MISTRAL_API_KEY");
+  const model = dienst === "openai" ? openaiModel() : env("MISTRAL_TRANSCRIBE_MODEL", "voxtral-mini-latest");
+  return { segmenten: uitkomst, dienst: `${dienst}:${model}`, ...(uitval ? { uitval } : {}) };
 }

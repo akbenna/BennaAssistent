@@ -3,7 +3,7 @@ import { vandaag } from "./format";
 import { metActueleDeadlines, weekVan } from "./week";
 import type {
   Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
-  Gezondheid, Koppeling, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
+  Foto, Gezondheid, Koppeling, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
   TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
 
@@ -459,7 +459,7 @@ export async function haalSchuldig(): Promise<Schuldig[]> {
 
 /* -------------------------------------------------------------- notities -- */
 
-const OPNAME_REGEL = "id,status,titel,gestart_op,duur_sec,project_id,bron,projects(naam,kleur)";
+const OPNAME_REGEL = "id,status,titel,gestart_op,duur_sec,project_id,bron,soort,projects(naam,kleur)";
 
 export async function haalOpnames(o: { zoek?: string; projectId?: string | null; statussen?: Opname["status"][]; limiet?: number } = {}): Promise<OpnameRegel[]> {
   let q = supabase.from("notities").select(OPNAME_REGEL);
@@ -535,6 +535,33 @@ export async function verwerkOpnames(): Promise<void> {
   await roepFunctie("notitie-verwerk").catch(() => { /* de planner is het vangnet */ });
 }
 
-export async function notitieActie(notitieId: string, actie: "agenda" | "bevestig", index?: number): Promise<{ link?: string | null }> {
+/** De foto's bij een notitie, met een link die een uur geldig is. */
+export async function haalFotos(notitieId: string): Promise<Foto[]> {
+  const rijen = controleer(await supabase.from("notitie_fotos")
+    .select("id,volgnummer,pad,moment_sec,status,lezing,fout").eq("notitie_id", notitieId).order("volgnummer").returns<Foto[]>());
+  if (!rijen.length) return rijen;
+  /* Lukt het ondertekenen niet, dan blijven de foto's met hun lezing staan,
+     alleen zonder plaatje: de inhoud is belangrijker dan het beeld. */
+  let urls = new Map<string, string>();
+  try {
+    const { data } = await supabase.storage.from("opnames").createSignedUrls(rijen.map((f) => f.pad), 3600);
+    if (Array.isArray(data)) urls = new Map(data.filter((d) => d.path && d.signedUrl).map((d) => [d.path!, d.signedUrl!] as [string, string]));
+  } catch { /* zonder plaatjes */ }
+  return rijen.map((f) => ({ ...f, url: urls.get(f.pad) ?? undefined }));
+}
+
+/** Een foto bij een notitie zetten. `moment` is het aantal seconden in de opname, of null achteraf. */
+export async function voegFotoToe(notitieId: string, eigenaar: string, foto: Blob, moment: number | null): Promise<void> {
+  const { data: laatst } = await supabase.from("notitie_fotos").select("volgnummer").eq("notitie_id", notitieId)
+    .order("volgnummer", { ascending: false }).limit(1).maybeSingle();
+  const nr = ((laatst as { volgnummer?: number } | null)?.volgnummer ?? 0) + 1;
+  const pad = `${eigenaar}/${notitieId}/foto-${String(nr).padStart(4, "0")}.jpg`;
+  const { error: e1 } = await supabase.storage.from("opnames").upload(pad, foto, { contentType: "image/jpeg", upsert: true });
+  if (e1) throw new Error(`Foto uploaden mislukt: ${e1.message}`);
+  const { error: e2 } = await supabase.from("notitie_fotos").insert({ notitie_id: notitieId, volgnummer: nr, pad, moment_sec: moment, status: "klaar" });
+  if (e2) throw new Error(e2.message);
+}
+
+export async function notitieActie(notitieId: string, actie: "agenda" | "bevestig" | "verdiep", index?: number): Promise<{ link?: string | null }> {
   return roepFunctie("notitie-actie", { notitie_id: notitieId, actie, index });
 }

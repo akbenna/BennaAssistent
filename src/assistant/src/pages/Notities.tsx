@@ -9,7 +9,13 @@ import { bewaarOpnameInstellingen, haalOpnameInstellingen, haalOpnames, haalProj
 import { naarMono, pcmNaarWav, stukkenVan } from "../lib/geluid";
 import { kiesFormaat } from "../lib/opnemer";
 import { datumKort, tijdKort } from "../lib/format";
-import type { OpnameStatus } from "../types/db";
+import type { OpnameSoort, OpnameStatus } from "../types/db";
+
+export const SOORT_TEKST: Record<OpnameSoort, string> = {
+  vergadering: "Vergadering",
+  congres: "Congres of webinar",
+  telefoon: "Telefoon",
+};
 
 export const OPNAME_STATUS: Record<OpnameStatus, string> = {
   opname: "Wordt opgenomen",
@@ -35,6 +41,7 @@ export function Notities() {
   const [zoek, setZoek] = useState("");
   const [gezocht, setGezocht] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [soort, setSoort] = useState<OpnameSoort>("vergadering");
   const [upload, setUpload] = useState<string | null>(null);
   const bestand = useRef<HTMLInputElement>(null);
   const opname = useOpname();
@@ -54,7 +61,7 @@ export function Notities() {
       const { data: n, error } = await supabase.from("notities").insert({
         bron: "upload", status: "opname", titel: f.name.replace(/\.[^.]+$/, ""),
         gestart_op: new Date(f.lastModified || Date.now()).toISOString(),
-        project_id: projectId, project_vast: Boolean(projectId), modellen: { bestandsnaam: f.name },
+        project_id: projectId, project_vast: Boolean(projectId), soort, modellen: { bestandsnaam: f.name },
       }).select("id,owner_id").single();
       if (error || !n) throw new Error(error?.message ?? "Kon geen notitie aanmaken");
       const { id, owner_id } = n as { id: string; owner_id: string };
@@ -87,13 +94,24 @@ export function Notities() {
       <section className="sectie">
         <header><h2>Opnemen</h2></header>
         <div className="kaart">
+          {/* De soort bepaalt de toon: bij een congres per spreker wat er werd
+              beweerd en waarop, met de slides en de bronnen erbij. */}
+          <div className="chips" role="radiogroup" aria-label="Wat voor gesprek is dit?" style={{ marginBottom: "0.5rem" }}>
+            {(Object.keys(SOORT_TEKST) as OpnameSoort[]).map((s) => (
+              <button type="button" key={s} className={`chip${soort === s ? " aan" : ""}`} role="radio" aria-checked={soort === s}
+                disabled={opname.fase !== "klaar"} onClick={() => setSoort(s)}>{SOORT_TEKST[s]}</button>
+            ))}
+          </div>
           <div className="chips" role="radiogroup" aria-label="Bij welk project hoort dit?">
             <button type="button" className={`chip${!projectId ? " aan" : ""}`} role="radio" aria-checked={!projectId} disabled={opname.fase !== "klaar"} onClick={() => setProjectId(null)}>Automatisch</button>
             {(projecten.data ?? []).map((p) => (
               <button type="button" className={`chip${projectId === p.id ? " aan" : ""}`} role="radio" key={p.id} aria-checked={projectId === p.id} disabled={opname.fase !== "klaar"} onClick={() => setProjectId(p.id)}>{p.naam}</button>
             ))}
           </div>
-          <OpnameKnop projectId={projectId} />
+          <OpnameKnop projectId={projectId} soort={soort} />
+          {soort === "congres" && opname.fase === "klaar" && (
+            <p className="mini" style={{ margin: "0.4rem 0 0" }}>Tijdens de opname maak je met Slide een foto van wat er op het scherm staat; met de ster markeer je een moment dat je wilt terugvinden.</p>
+          )}
           {opname.fase === "klaar" && (
             <div className="opnamebestand">
               <button type="button" className="knop" onClick={() => bestand.current?.click()} disabled={Boolean(upload)}>
@@ -123,6 +141,7 @@ export function Notities() {
               <div className="titel">{n.titel || "Zonder titel"}</div>
               <div className="meta">
                 <span className="mini">{datumKort(n.gestart_op)} {tijdKort(n.gestart_op)}{n.duur_sec ? ` · ${duur(n.duur_sec)}` : ""}</span>
+                {n.soort !== "vergadering" && <Merkje>{SOORT_TEKST[n.soort]}</Merkje>}
                 {n.projects && <Merkje>{n.projects.naam}</Merkje>}
                 {n.status !== "goedgekeurd" && <Merkje kleur={OPNAME_KLEUR[n.status]}>{OPNAME_STATUS[n.status]}</Merkje>}
               </div>

@@ -154,6 +154,8 @@ export const Icoon = {
   grafiek: (p: IcoonProps = {}) => svg(<><path d="M4 20V4" /><path d="M4 20h16" /><path d="M8 20v-6M12.5 20V9M17 20v-9.5" /></>, p),
   /* Een vraagteken in een rondje: hier staat hoe dit onderdeel werkt. */
   vraag: (p: IcoonProps = {}) => svg(<><circle cx="12" cy="12" r="9" /><path d="M9.3 9.2a2.8 2.8 0 1 1 3.4 3.1c-.5.2-.7.6-.7 1.1v.4" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></>, p),
+  /* Een fototoestel: een slide vastleggen tijdens een lezing. */
+  camera: (p: IcoonProps = {}) => svg(<><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.5-2h4.4l1.5 2h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z" /><circle cx="12" cy="12.5" r="3.4" /></>, p),
   /* Een microfoon: opnemen, en het tabblad Notities. */
   microfoon: (p: IcoonProps = {}) => svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" /></>, p),
   map: (p: IcoonProps = {}) => svg(<path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.5 7H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />, p),

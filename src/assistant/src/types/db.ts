@@ -233,6 +233,51 @@ export interface VervolgAfspraak {
   event_id?: string;
 }
 
+export type OpnameSoort = "vergadering" | "congres" | "telefoon";
+
+export interface Presentatie {
+  spreker: string;
+  onderwerp: string;
+  kernboodschappen: string[];
+  onderbouwing: string[];
+}
+
+export interface Bron {
+  omschrijving: string;
+  auteurs: string;
+  jaar: string;
+  tijdschrift: string;
+  doi: string;
+  pmid: string;
+  bewering: string;
+  herkomst: string;
+}
+
+export type Oordeel = "bevestigd" | "genuanceerd" | "afwijkend" | "niet te beoordelen";
+
+export interface Verdieping {
+  bronnen: Array<{
+    herkomst: string; bewering: string; gevonden: boolean; citaat: string; bevindingen: string; oordeel: Oordeel; toelichting: string;
+    gegevens: { url: string; titel: string; jaar: string; tijdschrift: string } | null;
+  }>;
+  duiding: string;
+  dienst: string;
+  gemaakt_op: string;
+}
+
+/** Een foto van een slide of document bij een notitie. */
+export interface Foto {
+  id: string;
+  volgnummer: number;
+  pad: string;
+  moment_sec: number | null;
+  status: "klaar" | "bezig" | "gereed" | "geweigerd" | "fout";
+  lezing: { soort: string; kern: string; tekst: string; cijfers: string[]; referenties: unknown[] } | null;
+  fout: string | null;
+  /** Ondertekende link, alleen in de app; hij verloopt na een uur. */
+  url?: string;
+}
+
 /** Wat het taalmodel van een gesprek maakte; zie `_shared/notities.ts`. */
 export interface Verslag {
   titel: string;
@@ -244,6 +289,10 @@ export interface Verslag {
   afspraken: VervolgAfspraak[];
   open_vragen: string[];
   mijn_vervolgstappen: string[];
+  presentaties?: Presentatie[];
+  relevantie_praktijk?: string;
+  kanttekeningen?: string[];
+  bronnen?: Bron[];
 }
 
 /** Eén opgenomen vergadering, overleg of gesprek. */
@@ -261,16 +310,20 @@ export interface Opname {
   samenvatting: Verslag | null;
   transcript: string | null;
   drive_doc_id: string | null;
-  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string };
+  modellen: { transcriptie?: string[]; samenvatting?: string; drive_fout?: string; bestandsnaam?: string; samenvatting_uitval?: string; verdieping?: string; verdieping_fout?: string };
   fout: string | null;
   privacy_reden: string | null;
   privacy_bevestigd_op: string | null;
   item_id: string | null;
   audio_verwijderen_na: string | null;
   audio_verwijderd: boolean;
+  soort: OpnameSoort;
+  markeringen: number[];
+  verdieping: Verdieping | null;
+  verdieping_status: "gevraagd" | "bezig" | "gereed" | "fout" | null;
 }
 
-export type OpnameRegel = Pick<Opname, "id" | "status" | "titel" | "gestart_op" | "duur_sec" | "project_id" | "bron">
+export type OpnameRegel = Pick<Opname, "id" | "status" | "titel" | "gestart_op" | "duur_sec" | "project_id" | "bron" | "soort">
   & { projects: { naam: string; kleur: string | null } | null };
 
 export interface OpnameInstellingen {

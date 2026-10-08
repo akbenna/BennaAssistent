@@ -25,6 +25,7 @@ Bij de Edge Functions (Supabase → Edge Functions → Secrets):
 | `OPENAI_BASE_URL` | standaard `https://eu.api.openai.com/v1`; alleen aanpassen als je bewust buiten de EU wilt |
 | `OPENAI_TRANSCRIBE_MODEL`, `OPENAI_TEXT_MODEL` | standaard `gpt-4o-transcribe-diarize` en `gpt-5-mini` |
 | `MISTRAL_API_KEY` | Notities: uitval voor het uitschrijven als OpenAI wegvalt (EU). Leeg laten mag; dan is er geen uitval |
+| `SPRAAK_VOLGORDE`, `TEKST_VOLGORDE`, `BEELD_VOLGORDE` | welke AI-dienst eerst; zie `docs/ai-diensten.md`. Leeg is de standaard: OpenAI eerst |
 
 In de Vault van de database (`vault.secrets`):
 
@@ -107,6 +108,12 @@ Instellingen. Er is een recht bijgekomen (`drive.file`: alleen bestanden die de
 assistent zelf maakt) om het Google Doc van een notitie te kunnen aanmaken.
 Tot dat gebeurt, staat bij elke notitie dat er geen Doc kon worden gemaakt; de
 rest werkt gewoon.
+
+**Congressen.** Foto's van slides staan in dezelfde bucket als de audio
+(`{eigenaar}/{notitie}/foto-0001.jpg`) en worden niet met de audio gewist: ze
+horen bij de notulen. Ze gaan langs het privacyfilter; een foto met
+patiëntgegevens wordt niet gelezen en telt niet mee. Bronnen nazoeken gebruikt
+PubMed (E-utilities) en Crossref, allebei zonder sleutel en zonder kosten.
 
 **Een notitie blijft op 'Wordt uitgeschreven' staan.** Kijk in de logs van
 `notitie-verwerk`. Een deel wordt drie keer geprobeerd; daarna staat de reden
