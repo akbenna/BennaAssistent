@@ -7,6 +7,9 @@ export const SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/drive.readonly",
+  // Alleen bestanden die de assistent zelf maakt: de Google Docs van Notities.
+  // De rest van je Drive blijft voor hem alleen-lezen.
+  "https://www.googleapis.com/auth/drive.file",
 ];
 
 export class GoogleError extends Error {

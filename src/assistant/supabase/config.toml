@@ -24,6 +24,11 @@ verify_jwt = false
 [functions.google-oauth-callback]
 verify_jwt = false
 
+# Planner én app: de functie controleert zelf het cron-geheim of de sessie, en
+# met een sessie verwerkt hij alleen het werk van die eigenaar.
+[functions.notitie-verwerk]
+verify_jwt = false
+
 # Alleen voor de ingelogde eigenaar.
 [functions.google-oauth-start]
 verify_jwt = true
@@ -35,4 +40,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.task-assist]
+verify_jwt = true
+
+[functions.notitie-actie]
 verify_jwt = true

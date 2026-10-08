@@ -9,12 +9,16 @@ import { Login, TweedeStap } from "./pages/Login";
 import { Vandaag } from "./pages/Vandaag";
 import { Voorstellen } from "./pages/Voorstellen";
 import { Taken } from "./pages/Taken";
+import { OpnameProvider } from "./lib/opname";
+import { OpnameBalk } from "./components/Opname";
 
 /* Vandaag, Voorstellen en Taken zijn de dagelijkse route; die laden meteen.
    De rest komt pas als je erheen gaat. */
 const Projecten = lazy(() => import("./pages/Projecten").then((m) => ({ default: m.Projecten })));
 const Instellingen = lazy(() => import("./pages/Instellingen").then((m) => ({ default: m.Instellingen })));
 const Delen = lazy(() => import("./pages/Delen").then((m) => ({ default: m.Delen })));
+const Notities = lazy(() => import("./pages/Notities").then((m) => ({ default: m.Notities })));
+const NotitieDetail = lazy(() => import("./pages/NotitieDetail").then((m) => ({ default: m.NotitieDetail })));
 
 export default function App() {
   const { sessie, gereed, tweedeStapNodig } = useSessie();
@@ -25,7 +29,10 @@ export default function App() {
   if (!sessie) return <Login />;
   if (tweedeStapNodig) return <TweedeStap />;
 
+  /* De opname hangt rond de hele schil: wie tijdens een vergadering naar een
+     taak kijkt, breekt de opname daarmee niet af. */
   return (
+    <OpnameProvider>
     <div className="schil">
       <header className="kop">
         <span className="merk">
@@ -35,6 +42,7 @@ export default function App() {
         <span className="rechts"><HulpKnop /><ThemaKnop /></span>
       </header>
       <main className="inhoud">
+        <OpnameBalk />
         <Suspense fallback={<p className="mini">Even laden…</p>}>
           <Routes>
             <Route path="/" element={<Vandaag />} />
@@ -43,12 +51,15 @@ export default function App() {
             <Route path="/projecten" element={<Projecten />} />
             <Route path="/instellingen" element={<Instellingen />} />
             <Route path="/delen" element={<Delen />} />
+            <Route path="/notities" element={<Notities />} />
+            <Route path="/notities/:id" element={<NotitieDetail />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </main>
       <Navigatie />
     </div>
+    </OpnameProvider>
   );
 }
 
@@ -108,6 +119,7 @@ function Navigatie() {
         <span>secretariaat</span>
       </div>
       {link("/", "Vandaag", Icoon.vandaag({}), tellingen?.vandaag)}
+      {link("/notities", "Notities", Icoon.microfoon({}), tellingen?.notities)}
       {link("/voorstellen", "Voorstellen", Icoon.inbox({}), tellingen?.voorstellen)}
       {link("/taken", "Taken", Icoon.taken({}))}
       {link("/projecten", "Projecten", Icoon.projecten({}))}
