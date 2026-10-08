@@ -694,7 +694,12 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
   background: var(--foutbg); color: var(--fout); border-radius: var(--radius-klein);
   font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums;
 }
+.opnamebalk { flex-wrap: wrap; }
 .opnamebalk a { color: inherit; text-decoration: none; flex: 1; }
+.opnamebalk .knop.actief { outline: 2px solid currentColor; }
+.opnametypen { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.opnametypen input { flex: 1; min-width: 0; font: inherit; font-weight: 400; padding: 0.45rem 0.6rem; border: 1px solid var(--lijn); border-radius: var(--radius-klein); background: var(--vlak); color: var(--ink); }
+.opnametypen ul { flex-basis: 100%; margin: 0; padding-left: 1rem; font-weight: 400; }
 .opnamebalk .lamp { width: 9px; height: 9px; border-radius: 50%; background: #c8312b; animation: knipper 1.4s ease-in-out infinite; }
 @keyframes knipper { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .opnamebalk .lamp { animation: none; } }
@@ -734,3 +739,7 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
 .bronlijst > li { margin: 0 0 0.8rem; }
 .opnamebalk .knop { flex: none; }
 .opnamebalk svg { width: 15px; height: 15px; }
+
+.voorbereiding { margin: 0.2rem 0 0.8rem; padding: 0.7rem 0.8rem; background: var(--vlak2); border-radius: var(--radius-klein); display: grid; gap: 0.6rem; }
+.voorbereiding-blok h3 { margin: 0 0 0.2rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
+.voorbereiding-blok ul { margin: 0; padding-left: 1.1rem; }

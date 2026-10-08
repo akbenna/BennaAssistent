@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Icoon } from "./ui";
 import { useOpname } from "../lib/opname";
@@ -67,7 +67,10 @@ export function OpnameBalk() {
   const o = useOpname();
   const naar = useNavigate();
   const camera = useRef<HTMLInputElement>(null);
+  const [typen, setTypen] = useState(false);
+  const [tekst, setTekst] = useState("");
   if (o.fase === "klaar") return null;
+  const bewaar = () => { o.noteer(tekst); setTekst(""); };
   const stop = async () => {
     const id = await o.stop();
     if (id) naar(`/notities/${id}`);
@@ -86,11 +89,26 @@ export function OpnameBalk() {
           <button type="button" className="knop klein" onClick={o.markeer} aria-label="Dit moment markeren">
             {Icoon.ster({})}{o.markeringen ? ` ${o.markeringen}` : ""}
           </button>
+          <button type="button" className={`knop klein${typen ? " actief" : ""}`} onClick={() => setTypen((t) => !t)} aria-expanded={typen}>
+            Typ{o.aantekeningen.length ? ` ${o.aantekeningen.length}` : ""}
+          </button>
         </>
       )}
       <button type="button" className="knop klein" onClick={() => void stop()} disabled={o.fase === "afronden"}>
         {o.fase === "afronden" ? "Afronden…" : <>{Icoon.vink({})} Stop</>}
       </button>
+      {typen && o.fase === "bezig" && (
+        <form className="opnametypen" onSubmit={(e) => { e.preventDefault(); bewaar(); }}>
+          <input autoFocus value={tekst} onChange={(e) => setTekst(e.target.value)} maxLength={1000}
+            placeholder="Eigen aantekening, bv. navragen bij accountant" aria-label="Eigen aantekening" />
+          <button type="submit" className="knop klein" disabled={!tekst.trim()}>Bewaar</button>
+          {o.aantekeningen.length > 0 && (
+            <ul className="mini">
+              {o.aantekeningen.slice(-3).map((a, i) => <li key={i}><b>{duur(a.moment)}</b> {a.tekst}</li>)}
+            </ul>
+          )}
+        </form>
+      )}
     </div>
   );
 }

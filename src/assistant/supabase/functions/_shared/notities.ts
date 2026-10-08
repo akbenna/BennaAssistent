@@ -376,10 +376,26 @@ Regels:
 - Vul sprekers: wie hoort bij welk label, alleen als het uit het gesprek blijkt. Gebruik die namen ook in de samenvatting en bij de actiepunten.
 - De opname is van ${o.datum}. Reken "volgende week vrijdag" alleen om naar een datum als dat eenduidig is.
 - Momenten die de eigenaar tijdens de opname markeerde zijn voor hem belangrijk; geef ze een plek in de samenvatting.
+- Wat de eigenaar tijdens de opname zelf typte weegt zwaarder dan wat jij uit het transcript afleidt. Verwerk elke aantekening: een taak of vraag ("navragen bij", "nog uitzoeken") wordt een actiepunt van hem, een nadruk ("belangrijk", "termijn") komt terug in de samenvatting. Laat er geen weg.
 - Kies het project dat het best past, of "${GEEN_PROJECT}":
 ${proj}
 
 ${PER_SOORT[o.soort ?? "vergadering"]}`;
+}
+
+/** Wat de eigenaar tijdens de opname zelf typte. */
+export interface Aantekening {
+  moment: number | null;
+  tekst: string;
+}
+
+/** Aantekeningen uit de database, rechtgetrokken: tekst verplicht, moment een getal of leeg. */
+export function leesAantekeningen(v: unknown): Aantekening[] {
+  return (Array.isArray(v) ? v : []).slice(0, 200).map((x) => {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const m = Number(o.moment);
+    return { moment: Number.isFinite(m) && m >= 0 ? m : null, tekst: typeof o.tekst === "string" ? o.tekst.trim().slice(0, 1000) : "" };
+  }).filter((a) => a.tekst);
 }
 
 export interface FotoVoorPrompt {
@@ -391,6 +407,7 @@ export interface FotoVoorPrompt {
 export function gebruikerPrompt(o: {
   transcript: string; agendaTitel?: string | null; deelnemers?: string[]; projectHint?: string | null;
   bestandsnaam?: string | null; fotos?: FotoVoorPrompt[]; markeringen?: number[];
+  aantekeningen?: Aantekening[];
 }): string {
   const meta = [
     o.agendaTitel && `Agenda-afspraak: ${o.agendaTitel}`,
@@ -404,7 +421,9 @@ export function gebruikerPrompt(o: {
     const refs = a.referenties.map((r) => `  - bron: ${[r.auteurs, r.titel, r.tijdschrift, r.jaar, r.doi && `doi ${r.doi}`, r.pmid && `PMID ${r.pmid}`].filter(Boolean).join(", ")}`).join("\n");
     return `Slide ${f.volgnummer}${f.moment != null ? ` [${mmss(f.moment)}]` : ""}: ${a.kern}\nTekst op de slide: ${a.tekst}${a.cijfers.length ? `\nCijfers: ${a.cijfers.join("; ")}` : ""}${refs ? `\n${refs}` : ""}`;
   }).join("\n\n");
-  return `${meta ? meta + "\n\n" : ""}${fotos ? `Slides en foto's die tijdens de opname zijn gemaakt:\n${fotos}\n\n` : ""}Transcript:\n${o.transcript}`;
+  const eigen = (o.aantekeningen ?? []).filter((a) => a.tekst)
+    .map((a) => `${a.moment != null ? `[${mmss(a.moment)}] ` : ""}${a.tekst}`).join("\n");
+  return `${meta ? meta + "\n\n" : ""}${eigen ? `Aantekeningen die de eigenaar tijdens de opname zelf typte:\n${eigen}\n\n` : ""}${fotos ? `Slides en foto's die tijdens de opname zijn gemaakt:\n${fotos}\n\n` : ""}Transcript:\n${o.transcript}`;
 }
 
 /* ------------------------------------------------------------ de foto's -- */
@@ -684,7 +703,7 @@ export function trekRecht(r: unknown, projectNamen: string[]): Uitkomst {
 
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function docHtml(o: { r: Uitkomst; datum: string; project: string | null; agendaTitel: string | null; transcript: string; verdieping?: Verdieping | null }): string {
+export function docHtml(o: { r: Uitkomst; datum: string; project: string | null; agendaTitel: string | null; transcript: string; verdieping?: Verdieping | null; aantekeningen?: Aantekening[] }): string {
   const { r } = o;
   const opsomming = (kop: string, items: string[]) =>
     items.length ? `<h2>${kop}</h2><ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
@@ -707,6 +726,7 @@ export function docHtml(o: { r: Uitkomst; datum: string; project: string | null;
   return `<html><head><meta charset="utf-8"></head><body>
 <h1>${esc(r.titel)}</h1><p style="color:#59615c">${meta}</p>
 <h2>Samenvatting</h2>${r.samenvatting.split(/\n\s*\n/).map((p) => `<p>${esc(p)}</p>`).join("")}
+${(o.aantekeningen ?? []).length ? `<h2>Mijn aantekeningen</h2><ul>${o.aantekeningen!.map((a) => `<li>${a.moment != null ? `<b>${esc(mmss(a.moment))}</b> ` : ""}${esc(a.tekst)}</li>`).join("")}</ul>` : ""}
 ${presentaties}${r.relevantie_praktijk ? `<h2>Relevantie voor de praktijk</h2><p>${esc(r.relevantie_praktijk)}</p>` : ""}${opsomming("Kanttekeningen", r.kanttekeningen)}
 ${opsomming("Besluiten", r.besluiten)}${acties}${afspraken}${opsomming("Open vragen", r.open_vragen)}${opsomming("Mijn vervolgstappen", r.mijn_vervolgstappen)}
 ${verdieping}${bronnen}

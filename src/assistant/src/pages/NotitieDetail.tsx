@@ -339,6 +339,20 @@ export function NotitieDetail() {
         </section>
       )}
 
+      {(notitie.aantekeningen ?? []).length > 0 && (
+        <section className="sectie">
+          <header><h2>Mijn aantekeningen</h2></header>
+          <div className="kaart">
+            {notitie.aantekeningen.map((a, i) => (
+              <div className="brief-regel" key={i}>
+                <span className="tijd">{duur(a.moment)}</span>
+                <span className="groei">{a.tekst}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {notitie.markeringen.length > 0 && notitie.transcript && (
         <section className="sectie">
           <header><h2>Gemarkeerde momenten</h2></header>

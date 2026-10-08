@@ -1,5 +1,5 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
-import { agendaGebeurtenis, extensieVoor, GEEN_PROJECT, maakTranscript, plaatsDeel, schema, trekRecht } from "./notities.ts";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { agendaGebeurtenis, extensieVoor, GEEN_PROJECT, gebruikerPrompt, leesAantekeningen, maakTranscript, plaatsDeel, schema, trekRecht } from "./notities.ts";
 import { schrijfUit } from "./spraak.ts";
 import { vatSamen } from "./samenvatten.ts";
 
@@ -308,4 +308,15 @@ Deno.test("noemSprekers: alleen bij een bekende naam, en het label blijft zichtb
   const t = "[0:10] Spreker A: Ik begin.\n[0:20] Spreker B: Goed.\n[0:30] Spreker AB: Ook.";
   const uit = noemSprekers(t, [{ label: "Spreker A", naam: "Jan", rol: "penningmeester" }, { label: "Spreker B", naam: "", rol: "" }]);
   assertEquals(uit, "[0:10] Jan (spreker A): Ik begin.\n[0:20] Spreker B: Goed.\n[0:30] Spreker AB: Ook.");
+});
+
+Deno.test("eigen aantekeningen: rechtgetrokken en met moment in de prompt", () => {
+  const a = leesAantekeningen([{ moment: 754, tekst: " navragen bij accountant " }, { moment: "x", tekst: "termijn 1 december" }, { tekst: "" }, null, "los"]);
+  assertEquals(a, [{ moment: 754, tekst: "navragen bij accountant" }, { moment: null, tekst: "termijn 1 december" }]);
+  assertEquals(leesAantekeningen(null), []);
+  const p = gebruikerPrompt({ transcript: "[00:01] Spreker A: hallo", aantekeningen: a });
+  assertStringIncludes(p, "zelf typte");
+  assertStringIncludes(p, "[12:34] navragen bij accountant");
+  assertStringIncludes(p, "\ntermijn 1 december");
+  assert(!gebruikerPrompt({ transcript: "x" }).includes("zelf typte"));
 });

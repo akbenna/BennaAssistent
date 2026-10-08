@@ -297,6 +297,12 @@ export interface Verslag {
   bronnen?: Bron[];
 }
 
+/** Wat de eigenaar tijdens de opname zelf typte, met het moment erbij. */
+export interface Aantekening {
+  moment: number | null;
+  tekst: string;
+}
+
 /** Eén opgenomen vergadering, overleg of gesprek. */
 export interface Opname {
   id: string;
@@ -321,6 +327,7 @@ export interface Opname {
   audio_verwijderd: boolean;
   soort: OpnameSoort;
   markeringen: number[];
+  aantekeningen: Aantekening[];
   verdieping: Verdieping | null;
   verdieping_status: "gevraagd" | "bezig" | "gereed" | "fout" | null;
 }

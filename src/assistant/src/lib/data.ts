@@ -1,3 +1,4 @@
+import { maakVoorbereiding, type Voorbereiding, type VorigeNotitie } from "./voorbereiding";
 import { roepFunctie, supabase } from "./supabase";
 import { vandaag } from "./format";
 import { metActueleDeadlines, weekVan } from "./week";
@@ -564,4 +565,31 @@ export async function voegFotoToe(notitieId: string, eigenaar: string, foto: Blo
 
 export async function notitieActie(notitieId: string, actie: "agenda" | "bevestig" | "verdiep", index?: number): Promise<{ link?: string | null }> {
   return roepFunctie("notitie-actie", { notitie_id: notitieId, actie, index });
+}
+
+/**
+ * Alles wat er over dit overleg al bekend is: de laatste drie notities van het
+ * project (of, zonder project, van een overleg met dezelfde agendatitel) en de
+ * taken die eruit voortkwamen.
+ */
+export async function haalVoorbereiding(o: { projectId: string | null; titel: string }): Promise<Voorbereiding> {
+  let q = supabase.from("notities").select("id,titel,gestart_op,samenvatting,item_id")
+    .in("status", ["gereed", "goedgekeurd"]);
+  if (o.projectId) q = q.eq("project_id", o.projectId);
+  else {
+    const veilig = o.titel.replace(/[%_\\]/g, (t) => `\\${t}`).trim();
+    if (!veilig) return maakVoorbereiding([], []);
+    q = q.ilike("agenda_titel", veilig);
+  }
+  const notities = controleer(await q.order("gestart_op", { ascending: false }).limit(3).returns<VorigeNotitie[]>());
+  const items = notities.map((n) => n.item_id).filter((x): x is string => Boolean(x));
+  let taken: TaakRij[] = [];
+  if (items.length) {
+    const { data, error } = await supabase.from("task_links")
+      .select(`tasks(${TAAK_MET_PROJECT})`).in("item_id", items)
+      .returns<Array<{ tasks: TaakRij | null }>>();
+    if (error) throw new Error(error.message);
+    taken = (data ?? []).map((r) => r.tasks).filter((t): t is TaakRij => Boolean(t));
+  }
+  return maakVoorbereiding(notities, taken);
 }

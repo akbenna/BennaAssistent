@@ -10,7 +10,7 @@ import type { Verbruik } from "./claude.ts";
 import { vraagJson } from "./diensten.ts";
 import {
   gebruikerPrompt, schema, systeemPrompt, trekRecht,
-  type FotoVoorPrompt, type ProjectContext, type Soort, type Uitkomst,
+  type Aantekening, type FotoVoorPrompt, type ProjectContext, type Soort, type Uitkomst,
 } from "./notities.ts";
 
 export async function vatSamen(o: {
@@ -25,6 +25,7 @@ export async function vatSamen(o: {
   bestandsnaam?: string | null;
   fotos?: FotoVoorPrompt[];
   markeringen?: number[];
+  aantekeningen?: Aantekening[];
 }): Promise<{ uitkomst: Uitkomst; dienst: string; verbruik: Verbruik; uitval?: string }> {
   const namen = o.projecten.map((p) => p.naam);
   const { ruw, verbruik, dienst, uitval } = await vraagJson({

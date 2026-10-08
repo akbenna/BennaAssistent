@@ -48,6 +48,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         kop: "Agenda en documenten",
         tekst: [
           "De agenda komt uit je Google-agenda en wordt elke werkdag om half zeven 's ochtends opgehaald voor het dagoverzicht. Zie je hier niets terwijl er wel afspraken staan, kijk dan op Instellingen of de koppeling nog werkt.",
+          "Bij elke afspraak staat Voorbereiden. Daaronder verschijnt wat er de vorige keer gebeurde: de datum en titel van het vorige overleg, wat er toen besloten is, welke vragen nog openstaan, wat jij zelf zou doen, en welke taken uit eerdere overleggen nog lopen. De assistent herkent het project aan de projectnaam of een trefwoord in de titel van de afspraak; zonder project zoekt hij een eerder overleg met precies dezelfde titel. Er komt geen taalmodel aan te pas: het is opzoeken in je eigen notities, dus direct en gratis. Onderaan staat de opnameknop, en een opname die je daar start hangt meteen aan het goede project.",
           "Onder Documenten staan bestanden die in Drive zijn gewijzigd of met je gedeeld. De assistent leest ze niet: hij legt alleen vast dát er iets veranderd is, door wie, en waar het staat. Er wordt geen taak van gemaakt — een document dat verandert vraagt zelden iets van je, en een voorstel per gewijzigd bestand zou het voorstellenscherm onbruikbaar maken.",
         ],
       },
@@ -69,6 +70,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         kop: "Opnemen",
         tekst: [
           "Eén tik op de rode knop, op Vandaag of hier, en de assistent neemt op. Elke dertig seconden gaat er een stuk naar de server, zodat een telefoon die uitvalt hooguit een halve minuut kost. Je kunt intussen gewoon door de app bladeren; de balk bovenaan laat zien dat de opname loopt. Laat het scherm aan: op een iPhone stopt de microfoon als je het vergrendelt.",
+          "Met Typ in de balk bovenaan schrijf je tijdens de opname je eigen aantekeningen, elk met het moment erbij. Ze wegen zwaarder dan wat het model uit het gesprek haalt: \"navragen bij de accountant\" wordt een actiepunt van jou, \"belangrijk: termijn 1 december\" komt terug in de samenvatting. Ze staan ook los in de notitie en in het Google Doc, onder Mijn aantekeningen.",
           "Een spraakmemo, een gespreksopname van de iPhone of een WAV uit SwyxIt verwerk je met Audiobestand verwerken. Zeg aan het begin van elk gesprek dat je opneemt.",
         ],
       },
@@ -82,7 +84,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
       {
         kop: "Congressen, symposia en webinars",
         tekst: [
-          "Kies vóór het opnemen Congres of webinar. De notitie wordt dan wetenschappelijk: per spreker de kernboodschappen en de onderbouwing zoals die werd gebracht, de relevantie voor de huisartsenpraktijk en het kaderwerk, en kanttekeningen. Tijdens de opname staan er twee knoppen in de balk bovenaan: Slide maakt een foto van wat er op het scherm staat, de ster markeert een moment dat je wilt terugvinden. Allebei krijgen ze het moment in de opname mee; een slide wordt al gelezen terwijl de lezing doorloopt.",
+          "Kies vóór het opnemen Congres of webinar. De notitie wordt dan wetenschappelijk: per spreker de kernboodschappen en de onderbouwing zoals die werd gebracht, de relevantie voor de huisartsenpraktijk en het kaderwerk, en kanttekeningen. Tijdens de opname staan er in de balk bovenaan, naast Typ, twee knoppen: Slide maakt een foto van wat er op het scherm staat, de ster markeert een moment dat je wilt terugvinden. Allebei krijgen ze het moment in de opname mee; een slide wordt al gelezen terwijl de lezing doorloopt.",
           "Op de slides en in het gesprek zoekt de assistent naar genoemde studies. Vindt hij er, dan vraagt hij of hij ze moet nazoeken. Zeg je ja, dan zoekt hij ze op in PubMed, legt elke bewering naast het abstract en zet er een oordeel bij: bevestigd, genuanceerd, afwijkend of niet te beoordelen. De bron en de citatie komen van PubMed zelf; het model leest alleen het abstract, en zonder abstract geeft het geen oordeel.",
         ],
       },
