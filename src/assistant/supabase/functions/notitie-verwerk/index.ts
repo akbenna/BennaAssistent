@@ -206,28 +206,32 @@ async function opnameBron(admin: Admin, owner: string): Promise<string> {
   return data.id as string;
 }
 
-async function zorgMap(token: string, naam: string, ouder: string): Promise<string> {
-  const q = `name='${naam.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${ouder}' in parents and trashed=false`;
+/* Alleen mappen die de assistent zelf maakte. Met drive.file mag hij niet in
+   een map schrijven die jij aanmaakte, ook niet als die toevallig "Notities"
+   heet; alleen-lezen ziet hij hem wel. Daarom een eigen kenmerk op elke map,
+   en zoeken op dat kenmerk in plaats van op de naam. */
+async function zorgMap(token: string, naam: string, ouder: string, kenmerk: string): Promise<string> {
+  const k = kenmerk.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q = `appProperties has { key='benna' and value='${k}' } and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const gevonden = await g(token, `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
   if (gevonden.files?.length) return gevonden.files[0].id;
   const nieuw = await g(token, `${DRIVE}/files?fields=id`, {
-    method: "POST", body: JSON.stringify({ name: naam, mimeType: "application/vnd.google-apps.folder", parents: [ouder] }),
+    method: "POST",
+    body: JSON.stringify({ name: naam, mimeType: "application/vnd.google-apps.folder", parents: [ouder], appProperties: { benna: kenmerk } }),
   });
   return nieuw.id;
 }
 
-async function maakDoc(admin: Admin, owner: string, titel: string, html: string, projectNaam: string | null, oudDoc: string | null): Promise<string> {
+/** Waar een document komt: Notities/<project> of, voor de congres-agent, Wetenschap/<congres>. */
+interface DocPlek { wortel: "Notities" | "Wetenschap"; map: string }
+
+async function maakDoc(admin: Admin, owner: string, titel: string, html: string, plek: DocPlek, oudDoc: string | null): Promise<string> {
   const { data: drive } = await admin.from("sources").select("id").eq("owner_id", owner)
     .eq("kind", "drive").eq("actief", true).limit(1).maybeSingle();
   if (!drive) throw new Error("Geen Drive-koppeling");
   const token = await accessToken(admin, drive.id);
-  const inst = await instellingen(admin, owner);
-  let wortel = inst.drive_map_id;
-  if (!wortel) {
-    wortel = await zorgMap(token, "Notities", "root");
-    await admin.from("notitie_instellingen").upsert({ owner_id: owner, drive_map_id: wortel });
-  }
-  const doel = await zorgMap(token, projectNaam ?? "Overig", wortel);
+  const wortel = await zorgMap(token, plek.wortel, "root", plek.wortel);
+  const doel = await zorgMap(token, plek.map, wortel, `${plek.wortel}/${plek.map}`);
   if (oudDoc) {
     await g(token, `${DRIVE}/files/${oudDoc}`, { method: "PATCH", body: JSON.stringify({ trashed: true }) }).catch(() => {});
   }
@@ -242,6 +246,50 @@ async function maakDoc(admin: Admin, owner: string, titel: string, html: string,
   });
   if (!r.ok) throw new GoogleError(r.status, `Drive: ${(await r.text()).slice(0, 300)}`);
   return (await r.json()).id as string;
+}
+
+/** Wat er bij een mislukt document in de notitie komt: de oorzaak, en wat jij kunt doen. */
+function driveFout(e: unknown): string {
+  if (e instanceof GoogleError && e.status === 403) {
+    return "Google gaf geen toestemming om een document te maken. Koppel Google opnieuw op Instellingen en vink daar het maken van bestanden in Drive aan; het document wordt daarna vanzelf gemaakt.";
+  }
+  return String(e instanceof Error ? e.message : e).slice(0, 300);
+}
+
+/**
+ * Het Google Doc van een notitie zoals hij nu in de database staat. Gebruikt
+ * na het samenvatten, na het nazoeken van bronnen, en om een document alsnog
+ * te maken als Google eerder weigerde.
+ */
+async function bouwDoc(admin: Admin, n: any, r: Uitkomst, verdieping: Verdieping | null): Promise<string> {
+  const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
+  const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+  const { data: p } = n.project_id ? await admin.from("projects").select("naam").eq("id", n.project_id).maybeSingle() : { data: null };
+  const plek: DocPlek = n.bron === "onderzoek"
+    ? { wortel: "Wetenschap", map: (n.agenda_titel as string | null) || "Overig" }
+    : { wortel: "Notities", map: p?.naam ?? "Overig" };
+  const html = docHtml({
+    r, datum, project: p?.naam ?? null, agendaTitel: n.bron === "onderzoek" ? null : n.agenda_titel, transcript: n.transcript ?? "",
+    verdieping, aantekeningen: leesAantekeningen(n.aantekeningen),
+    invoer: n.bron === "tekst" ? n.invoer ?? "" : null, link: n.link ?? null,
+  });
+  return await maakDoc(admin, n.owner_id, `${d} ${r.titel}`, html, plek, n.drive_doc_id ?? null);
+}
+
+/** Een notitie die nog een document tegoed heeft, omdat Google eerder weigerde. */
+async function maakDocAlsnog(admin: Admin, n: any) {
+  const modellen: Record<string, unknown> = { ...(n.modellen ?? {}) };
+  delete modellen.drive_opnieuw;
+  const r = n.samenvatting as Uitkomst | null;
+  if (!r) { await admin.from("notities").update({ modellen }).eq("id", n.id); return; }
+  try {
+    const docId = await bouwDoc(admin, n, r, (n.verdieping as Verdieping | null) ?? null);
+    delete modellen.drive_fout;
+    await admin.from("notities").update({ drive_doc_id: docId, modellen }).eq("id", n.id);
+  } catch (e) {
+    modellen.drive_fout = driveFout(e);
+    await admin.from("notities").update({ modellen }).eq("id", n.id);
+  }
 }
 
 async function vatNotitieSamen(admin: Admin, n: any) {
@@ -359,13 +407,10 @@ async function vatNotitieSamen(admin: Admin, n: any) {
   // Het Google Doc. Mislukt dat, dan is de notitie er nog steeds.
   let docId: string | null = n.drive_doc_id ?? null;
   try {
-    const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: project?.naam ?? null, agendaTitel: agenda?.titel ?? null, transcript, aantekeningen, invoer: snel ? n.invoer ?? "" : null, link: n.link ?? null }), project?.naam ?? null, docId);
+    docId = await bouwDoc(admin, { ...n, transcript, project_id: project?.id ?? null, agenda_titel: n.bron === "onderzoek" ? n.agenda_titel : agenda?.titel ?? null }, r, null);
     delete modellen.drive_fout;
   } catch (e) {
-    modellen.drive_fout = e instanceof GoogleError && e.status === 403
-      ? "Google gaf geen toestemming om een document te maken. Koppel Google opnieuw op Instellingen; daarna kan het."
-      : String(e).slice(0, 300);
+    modellen.drive_fout = driveFout(e);
   }
 
   /* Afspraken die al in de agenda staan houden hun verwijzing bij opnieuw
@@ -442,12 +487,12 @@ async function verdiepNotitie(admin: Admin, n: any) {
   // Het Google Doc opnieuw, nu met de nagezochte bronnen erin.
   let docId: string | null = n.drive_doc_id ?? null;
   try {
-    const datum = new Date(n.gestart_op).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long", timeStyle: "short" });
-    const d = new Date(n.gestart_op).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-    const { data: p } = n.project_id ? await admin.from("projects").select("naam").eq("id", n.project_id).maybeSingle() : { data: null };
-    docId = await maakDoc(admin, owner, `${d} ${r.titel}`, docHtml({ r, datum, project: p?.naam ?? null, agendaTitel: n.agenda_titel, transcript: n.transcript ?? "", verdieping, aantekeningen: leesAantekeningen(n.aantekeningen), invoer: n.bron === "tekst" ? n.invoer ?? "" : null, link: n.link ?? null }), p?.naam ?? null, docId);
+    docId = await bouwDoc(admin, n, r, verdieping);
+    delete modellen.drive_fout;
+    // Een document dat nog moest worden gemaakt, is er nu.
+    delete modellen.drive_opnieuw;
   } catch (e) {
-    modellen.drive_fout = String(e).slice(0, 300);
+    modellen.drive_fout = driveFout(e);
   }
   await admin.from("notities").update({ verdieping, verdieping_status: "gereed", drive_doc_id: docId, modellen }).eq("id", n.id);
   await audit(admin, owner, "notitie_verdiept", {
@@ -582,6 +627,17 @@ Deno.serve(async (req) => {
       const reden = String(e instanceof Error ? e.message : e).slice(0, 500);
       await admin.from("notities").update({ verdieping_status: "fout", modellen: { ...(n.modellen ?? {}), verdieping_fout: reden } }).eq("id", n.id);
       verslag.fouten.push(`verdieping: ${reden.slice(0, 200)}`);
+    }
+  }
+
+  // Documenten die Google eerder weigerde, nu de koppeling (misschien) klopt.
+  {
+    let q = admin.from("notities").select("*").eq("modellen->>drive_opnieuw", "true").limit(5);
+    if (eigenaar) q = q.eq("owner_id", eigenaar);
+    const { data } = await q;
+    for (const n of data ?? []) {
+      if (Date.now() > tot - 15_000) break;
+      await maakDocAlsnog(admin, n);
     }
   }
 

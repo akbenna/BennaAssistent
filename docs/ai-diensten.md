@@ -8,6 +8,7 @@ Functions, Secrets). Wisselen is één regel, zonder nieuwe uitrol:
 | `SPRAAK_VOLGORDE` | `openai,mistral` | opnames uitschrijven |
 | `TEKST_VOLGORDE` | `openai,claude` | samenvatten en bronnen beoordelen; `mistral` mag er ook in |
 | `BEELD_VOLGORDE` | `openai,claude` | foto's van slides lezen; `mistral` mag er ook in |
+| `WEB_VOLGORDE` | `openai,claude` | de congres-agent: zoeken op het web; alleen deze twee kunnen dat |
 
 Een dienst zonder sleutel wordt overgeslagen. De eerste die antwoordt wint; als
 er een uitviel, staat dat onderaan de notitie. Mail-triage, concepten en
@@ -15,6 +16,12 @@ meedenken lopen buiten deze volgorde en blijven op Claude.
 
 Het afgesproken uitgangspunt: OpenAI eerst, via het EU-project; Mistral (EU)
 en Claude als uitval, zodat Claude niet de lange transcripten draagt.
+
+Zoeken op het web gaat bij OpenAI via het gereedschap `web_search` van de
+Responses-API, op hetzelfde adres als de rest (`OPENAI_WEB_BASE_URL` kan het
+apart zetten, `OPENAI_WEB_MODEL` het model). Weigert het EU-project dat, dan
+neemt Claude het over met `web_search_20260209` (`CLAUDE_WEB_MODEL`, standaard
+het schrijfmodel). Beide rekenen per zoekopdracht plus de gelezen tekst.
 
 ## Prijzen, stand oktober 2026
 

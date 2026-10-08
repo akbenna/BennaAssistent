@@ -125,6 +125,29 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
     ],
   },
   {
+    pad: "/onderzoek",
+    titel: "Congres-agent",
+    kern: "Een congres laten uitzoeken: wat er gepresenteerd is, wat ertoe doet voor de eerste lijn, en de thema's die jij kiest uitgewerkt tot notities.",
+    delen: [
+      {
+        kop: "Hoe het werkt",
+        tekst: [
+          "Noem een congres, bijvoorbeeld ESC Congress 2026, en zet er eventueel de website en waar je in het bijzonder op let bij. De agent zoekt op internet het programma, de hotline- en late-breaking sessies, nieuwe richtlijnen, gelijktijdige publicaties en de verslagen erover. Na een paar minuten legt hij acht tot vijftien thema's voor, met bij elk wat er gepresenteerd is, waarom het voor jou als huisarts en kaderarts hart- en vaatziekten wel of niet ertoe doet, en de pagina's waar het staat.",
+          "Jij kiest. Vink aan wat je uitgewerkt wilt hebben en schrijf erbij wat je er in het bijzonder over wilt weten. Onder Bespreken stel je de agent vragen; hij zoekt opnieuw als dat nodig is, en wat er nieuw bij komt, zet hij als thema in de lijst.",
+          "Met Uitwerken maakt de agent van elk gekozen thema een eigen notitie: de studie of richtlijn, opzet, populatie, eindpunten en de cijfers zoals de bron ze geeft, wat het betekent naast de NHG-standaard, en de kanttekeningen. Die notities staan tussen je andere notities, doen mee met zoeken en Vraag het je notities, en komen als Google Doc in de map Wetenschap/<congres> in je Drive. Ze tellen niet mee in het nascholingslogboek, want je was er niet.",
+        ],
+      },
+      {
+        kop: "Hoe betrouwbaar het is",
+        tekst: [
+          "De agent mag niets schrijven dat niet in een gevonden pagina staat, en zegt bij elk thema of het een publicatie, een congrespresentatie, een persbericht of een nieuwsbericht is. Is een congres nog niet geweest, dan krijg je het programma en geen uitkomsten. De publicaties die hij bij een uitwerking noemt, worden daarna vanzelf opgezocht in PubMed en naast het abstract gelegd, met een oordeel per bewering: bevestigd, genuanceerd, afwijkend of niet te beoordelen.",
+          "Het blijft een samenvatting door een taalmodel van wat er op internet staat. Voor een beslissing in de praktijk lees je de publicatie zelf; de notitie zegt je welke, en waar je moet kijken.",
+          "Zoeken op internet gaat via OpenAI, met Claude als uitval. Een verkenning en elk uitgewerkt thema kosten naar schatting enkele tientallen dollarcenten aan zoeken en tekst; het precieze bedrag staat op je rekening bij OpenAI of Anthropic.",
+        ],
+      },
+    ],
+  },
+  {
     pad: "/voorstellen",
     titel: "Voorstellen",
     kern: "Wat de assistent in je mail vond en wat hij denkt dat je ermee moet.",
@@ -249,6 +272,6 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
 export function hoofdstukVoor(pad: string): Hoofdstuk | null {
   // Delen valt onder Taken: het is dezelfde vorm, alleen binnengekomen via het
   // deelmenu van de telefoon.
-  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") || pad === "/nascholing" ? "/notities" : pad;
+  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") || pad === "/nascholing" ? "/notities" : pad.startsWith("/onderzoek/") ? "/onderzoek" : pad;
   return HOOFDSTUKKEN.find((h) => h.pad === gezocht) ?? null;
 }

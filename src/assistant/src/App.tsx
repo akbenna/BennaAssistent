@@ -20,6 +20,8 @@ const Delen = lazy(() => import("./pages/Delen").then((m) => ({ default: m.Delen
 const Notities = lazy(() => import("./pages/Notities").then((m) => ({ default: m.Notities })));
 const NotitieDetail = lazy(() => import("./pages/NotitieDetail").then((m) => ({ default: m.NotitieDetail })));
 const Nascholing = lazy(() => import("./pages/Nascholing").then((m) => ({ default: m.Nascholing })));
+const Onderzoek = lazy(() => import("./pages/Onderzoek").then((m) => ({ default: m.Onderzoek })));
+const OnderzoekDetail = lazy(() => import("./pages/OnderzoekDetail").then((m) => ({ default: m.OnderzoekDetail })));
 
 export default function App() {
   const { sessie, gereed, tweedeStapNodig } = useSessie();
@@ -55,6 +57,8 @@ export default function App() {
             <Route path="/notities" element={<Notities />} />
             <Route path="/notities/:id" element={<NotitieDetail />} />
             <Route path="/nascholing" element={<Nascholing />} />
+            <Route path="/onderzoek" element={<Onderzoek />} />
+            <Route path="/onderzoek/:id" element={<OnderzoekDetail />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
