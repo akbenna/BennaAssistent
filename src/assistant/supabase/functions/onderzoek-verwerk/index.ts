@@ -18,7 +18,7 @@ import {
 } from "../_shared/onderzoek.ts";
 import type { Verbruik } from "../_shared/claude.ts";
 
-const BUDGET_MS = 140_000;
+const BUDGET_MS = 145_000;
 const VAST_NA_MS = 10 * 60_000;
 
 const telOp = (modellen: Record<string, unknown>, dienst: string, v: Verbruik) => {
@@ -29,7 +29,7 @@ const telOp = (modellen: Record<string, unknown>, dienst: string, v: Verbruik) =
 async function verkennen(admin: Admin, o: any) {
   const vandaag = new Date().toLocaleDateString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "long" });
   const p = verkenPrompt({ onderwerp: o.onderwerp, url: o.url, focus: o.focus, vandaag });
-  const a = await zoekOpWeb({ naam: "verkenning", ...p, schema: verkenSchema, maxZoek: 10 });
+  const a = await zoekOpWeb({ naam: "verkenning", ...p, schema: verkenSchema, maxZoek: 6 });
   const r = a.ruw as { overzicht?: string; themas?: unknown };
   const themas = leesThemas(r.themas);
   if (!themas.length) throw new Error("De agent vond geen thema's. Probeer een preciezere naam of zet de website erbij.");
@@ -47,7 +47,7 @@ async function antwoorden(admin: Admin, o: any) {
   if (!vraag) { await admin.from("onderzoeken").update({ werk: null, werk_sinds: null }).eq("id", o.id); return; }
   const themas = (o.themas ?? []) as Thema[];
   const p = antwoordPrompt({ onderwerp: o.onderwerp, overzicht: o.overzicht ?? "", themas, gesprek: gesprek.slice(0, -1), vraag: vraag.tekst });
-  const a = await zoekOpWeb({ naam: "antwoord", ...p, schema: antwoordSchema, maxZoek: 5 });
+  const a = await zoekOpWeb({ naam: "antwoord", ...p, schema: antwoordSchema, maxZoek: 4 });
   const r = a.ruw as { antwoord?: string; nieuwe_themas?: unknown };
   const nieuw = leesThemas(r.nieuwe_themas, themas);
   const bronnen = a.bronnen.slice(0, 8).map((b) => `- ${b.titel}: ${b.url}`).join("\n");
@@ -68,7 +68,7 @@ async function uitwerken(admin: Admin, o: any) {
     return;
   }
   const p = uitwerkPrompt({ onderwerp: o.onderwerp, thema: t });
-  const a = await zoekOpWeb({ naam: "uitwerking", ...p, schema: uitwerkSchema, maxZoek: 8 });
+  const a = await zoekOpWeb({ naam: "uitwerking", ...p, schema: uitwerkSchema, maxZoek: 6 });
   const r = naarUitkomst(a.ruw, t);
   /* Een gewone notitie, zodat zoeken, vragen, labels en het nazoeken in PubMed
      er vanzelf mee werken. Bron 'onderzoek' houdt hem uit het

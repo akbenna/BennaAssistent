@@ -16,7 +16,7 @@
  * Die gaan als bronnen mee, los van wat het model zelf als bron opgeeft.
  */
 import { WRITE_MODEL, type Verbruik } from "./claude.ts";
-import { opVolgorde, openaiBasis, leesResponsTekst, tekstModel, volgorde } from "./diensten.ts";
+import { opVolgorde, openaiBasis, openaiResponses, leesResponsTekst, tekstModel, volgorde } from "./diensten.ts";
 
 const env = (k: string, d = "") => Deno.env.get(k) || d;
 
@@ -72,19 +72,12 @@ export function bronnenClaude(inhoud: any[]): WebBron[] {
 }
 
 async function viaOpenAI(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uitval">> {
-  const r = await fetch(`${env("OPENAI_WEB_BASE_URL", openaiBasis()).replace(/\/$/, "")}/responses`, {
-    method: "POST",
-    signal: AbortSignal.timeout(v.tijd ?? 120_000),
-    headers: { Authorization: `Bearer ${env("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: env("OPENAI_WEB_MODEL", tekstModel("openai")),
-      input: [{ role: "system", content: v.systeem }, { role: "user", content: v.gebruiker }],
-      tools: [{ type: "web_search" }],
-      text: { format: { type: "json_schema", name: v.naam, schema: v.schema, strict: true } },
-    }),
-  });
-  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const data = await r.json();
+  const data = await openaiResponses(env("OPENAI_WEB_BASE_URL", openaiBasis()).replace(/\/$/, ""), {
+    model: env("OPENAI_WEB_MODEL", tekstModel("openai")),
+    input: [{ role: "system", content: v.systeem }, { role: "user", content: v.gebruiker }],
+    tools: [{ type: "web_search" }],
+    text: { format: { type: "json_schema", name: v.naam, schema: v.schema, strict: true } },
+  }, AbortSignal.timeout(v.tijd ?? 120_000));
   return {
     ruw: JSON.parse(leesResponsTekst(data)),
     bronnen: citatiesOpenAI(data),
@@ -106,12 +99,16 @@ async function viaClaude(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uit
       signal: AbortSignal.timeout(resterend),
       headers: { "x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
-        model: env("CLAUDE_WEB_MODEL", WRITE_MODEL()),
+        model: env("CLAUDE_WEB_MODEL", "claude-sonnet-5-5"),
         max_tokens: 16000,
+        /* Een ronde mag hooguit tweeënhalve minuut duren. Op het standaardniveau
+           denkt het model zo lang na dat een verkenning daar niet in paste;
+           zoeken en samenvatten vragen geen diep redeneren. */
+        output_config: { effort: env("CLAUDE_WEB_EFFORT", "low") },
         system: systeem,
         messages: berichten,
         tools: [
-          { type: "web_search_20260209", name: "web_search", max_uses: v.maxZoek ?? 8 },
+          { type: "web_search_20260209", name: "web_search", max_uses: v.maxZoek ?? 6 },
           { name: v.naam, description: "Sla het eindantwoord op, in precies dit schema.", input_schema: v.schema, strict: true },
         ],
         tool_choice: { type: "auto" },
@@ -138,9 +135,9 @@ export async function zoekOpWeb(v: WebVraag): Promise<WebAntwoord> {
   const diensten = volgorde("WEB_VOLGORDE", ["openai", "claude"], ["openai", "claude"] as const);
   /* Eén Edge Function-ronde duurt hooguit tweeënhalve minuut. De eerste dienst
      krijgt er ruim één, zodat er bij uitval nog tijd is voor de tweede. */
-  const eind = Date.now() + (v.tijd ?? 130_000);
+  const eind = Date.now() + (v.tijd ?? 135_000);
   const { uitkomst, dienst, uitval } = await opVolgorde(diensten,
-    (d) => VIA[d]({ ...v, tijd: d === diensten[0] && diensten.length > 1 ? Math.min(75_000, eind - Date.now()) : eind - Date.now() }),
+    (d) => VIA[d]({ ...v, tijd: d === diensten[0] && diensten.length > 1 ? Math.min(70_000, eind - Date.now()) : eind - Date.now() }),
     "Geen dienst om op het web te zoeken: zet OPENAI_API_KEY of ANTHROPIC_API_KEY");
   return { ...uitkomst, bronnen: uniekeBronnen(uitkomst.bronnen), dienst, ...(uitval ? { uitval } : {}) };
 }
