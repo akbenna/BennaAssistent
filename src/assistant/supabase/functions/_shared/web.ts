@@ -36,7 +36,18 @@ export interface WebVraag {
   tijd?: number;
 }
 
-export interface WebAntwoord { ruw: unknown; bronnen: WebBron[]; verbruik: Verbruik; dienst: string; uitval?: string }
+export interface WebAntwoord { ruw: unknown; bronnen: WebBron[]; verbruik: Verbruik; dienst: string; uitval?: string; meldingen?: string[] }
+
+/** Wat zoeken of lezen bij Claude tegenhield (max_uses_exceeded, url_not_accessible, ...). */
+export function zoekfoutenClaude(inhoud: any[]): string[] {
+  const uit: string[] = [];
+  for (const b of inhoud ?? []) {
+    if ((b.type === "web_search_tool_result" || b.type === "web_fetch_tool_result") && b.content && !Array.isArray(b.content) && b.content.error_code) {
+      uit.push(`${b.type === "web_fetch_tool_result" ? "lezen" : "zoeken"}: ${b.content.error_code}`);
+    }
+  }
+  return uit;
+}
 
 /** Unieke http(s)-bronnen, de eerste titel wint. */
 export function uniekeBronnen(lijst: WebBron[]): WebBron[] {
@@ -82,6 +93,8 @@ async function viaOpenAI(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uit
     model: env("OPENAI_WEB_MODEL", tekstModel("openai")),
     input: [{ role: "system", content: v.systeem }, { role: "user", content: v.gebruiker }],
     tools: [{ type: "web_search" }],
+    // Ruim: zoekresultaten tellen mee, en een afgekapt antwoord is onbruikbaar.
+    max_output_tokens: 16000,
     text: { format: { type: "json_schema", name: v.naam, schema: v.schema, strict: true } },
   }, AbortSignal.timeout(v.tijd ?? 120_000));
   return {
@@ -95,6 +108,7 @@ async function viaClaude(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uit
   const eind = Date.now() + (v.tijd ?? 120_000);
   const berichten: Array<{ role: "user" | "assistant"; content: unknown }> = [{ role: "user", content: v.gebruiker }];
   const bronnen: WebBron[] = [];
+  const meldingen: string[] = [];
   const verbruik: Verbruik = { invoer: 0, uitvoer: 0 };
   const systeem = `${v.systeem}\n\nZoek eerst op het web, en open met web_fetch de pagina's die er het meest toe doen: een zoekresultaat is maar een fragment. Sluit altijd af door het gereedschap "${v.naam}" één keer aan te roepen met je volledige antwoord; schrijf het antwoord niet als gewone tekst.`;
   for (let ronde = 0; ronde < 6; ronde++) {
@@ -127,8 +141,9 @@ async function viaClaude(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uit
     verbruik.invoer += Number(j.usage?.input_tokens ?? 0);
     verbruik.uitvoer += Number(j.usage?.output_tokens ?? 0);
     bronnen.push(...bronnenClaude(j.content));
+    meldingen.push(...zoekfoutenClaude(j.content));
     const antwoord = (j.content ?? []).find((c: any) => c.type === "tool_use" && c.name === v.naam);
-    if (antwoord) return { ruw: antwoord.input, bronnen, verbruik };
+    if (antwoord) return { ruw: antwoord.input, bronnen, verbruik, meldingen };
     if (j.stop_reason === "refusal") throw new Error("Claude weigerde");
     berichten.push({ role: "assistant", content: j.content });
     // Bij pause_turn gaat hij vanzelf verder; anders vragen we om het eindantwoord.

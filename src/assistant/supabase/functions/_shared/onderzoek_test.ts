@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { leesThemas, naarUitkomst, schoneLinks, schoneUrl, uitwerkPrompt, verkenSchema, uitwerkSchema, antwoordSchema, type Thema } from "./onderzoek.ts";
-import { bronnenClaude, citatiesOpenAI, uniekeBronnen, zoekOpWeb } from "./web.ts";
+import { bronnenClaude, citatiesOpenAI, uniekeBronnen, zoekfoutenClaude, zoekOpWeb } from "./web.ts";
 
 const thema = (v: Partial<Thema> = {}): Thema => ({
   id: "t1", titel: "Lp(a)-verlaging", kern: "", wat_gepresenteerd: "", relevantie: "hoog", waarom: "", soort: "studie",
@@ -150,4 +150,27 @@ Deno.test("schoneUrl en schoneLinks: trackingcodes weg, de rest van de link blij
   assertEquals(schoneUrl("https://a.org/x?utm_source=openai&id=5"), "https://a.org/x?id=5");
   assertEquals(schoneUrl("https://doi.org/10.1/abc"), "https://doi.org/10.1/abc");
   assertEquals(schoneLinks("Zie (https://acc.org/a?utm_source=openai) en https://b.nl/c?utm_medium=x."), "Zie (https://acc.org/a) en https://b.nl/c.");
+});
+
+Deno.test("zoekfoutenClaude: fouten van zoeken en lezen worden benoemd, gewone resultaten niet", () => {
+  assertEquals(zoekfoutenClaude([
+    { type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://a.nl" }] },
+    { type: "web_search_tool_result", content: { type: "web_search_tool_result_error", error_code: "max_uses_exceeded" } },
+    { type: "web_fetch_tool_result", content: { type: "web_fetch_tool_error", error_code: "url_not_accessible" } },
+    { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url: "https://b.nl" } },
+  ]), ["zoeken: max_uses_exceeded", "lezen: url_not_accessible"]);
+});
+
+Deno.test("OpenAI: een onvolledig antwoord wordt een duidelijke fout, geen half JSON", async () => {
+  Deno.env.set("OPENAI_API_KEY", "x");
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output_text: "{\"a\":" }), { status: 200 })) as typeof fetch;
+  try {
+    const { openaiResponses } = await import("./diensten.ts");
+    let fout = "";
+    try { await openaiResponses("https://api.openai.com/v1", { model: "gpt-4.1-mini", input: [] }); } catch (e) { fout = String(e); }
+    assertStringIncludes(fout, "onvolledig: max_output_tokens");
+  } finally {
+    globalThis.fetch = orig;
+  }
 });

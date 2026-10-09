@@ -89,7 +89,10 @@ export async function openaiResponses(basis: string, lichaam: Record<string, unk
     else throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
   }
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return await r.json();
+  const data = await r.json();
+  // Een afgekapt antwoord is geen antwoord: zeg waarom, in plaats van half JSON te ontleden.
+  if (data?.status === "incomplete") throw new Error(`OpenAI antwoord onvolledig: ${data.incomplete_details?.reason ?? "onbekend"}`);
+  return data;
 }
 
 /** Het antwoord van de Responses-API kan op twee plekken tekst dragen. */
