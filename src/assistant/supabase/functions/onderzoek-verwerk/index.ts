@@ -21,9 +21,16 @@ import type { Verbruik } from "../_shared/claude.ts";
 const BUDGET_MS = 145_000;
 const VAST_NA_MS = 10 * 60_000;
 
-const telOp = (modellen: Record<string, unknown>, dienst: string, v: Verbruik) => {
+/* Verbruik optellen, en bij elke stap vastleggen of er een dienst uitviel en
+   waarom. Zonder dat laatste zie je alleen dat Claude het deed, niet dat
+   OpenAI het weigerde. */
+const telOp = (modellen: Record<string, unknown>, dienst: string, v: Verbruik, uitval?: string) => {
   const oud = (modellen.verbruik ?? { invoer: 0, uitvoer: 0, stappen: 0 }) as { invoer: number; uitvoer: number; stappen: number };
-  return { ...modellen, laatste_dienst: dienst, verbruik: { invoer: oud.invoer + v.invoer, uitvoer: oud.uitvoer + v.uitvoer, stappen: oud.stappen + 1 } };
+  const { uitval: _oud, ...rest } = modellen;
+  return {
+    ...rest, laatste_dienst: dienst, ...(uitval ? { uitval } : {}),
+    verbruik: { invoer: oud.invoer + v.invoer, uitvoer: oud.uitvoer + v.uitvoer, stappen: oud.stappen + 1 },
+  };
 };
 
 async function verkennen(admin: Admin, o: any) {
@@ -36,7 +43,7 @@ async function verkennen(admin: Admin, o: any) {
   await admin.from("onderzoeken").update({
     fase: "kiezen", werk: null, werk_sinds: null, pogingen: 0, fout: null,
     overzicht: String(r.overzicht ?? "").slice(0, 8000), themas, bronnen: a.bronnen,
-    modellen: { ...telOp(o.modellen ?? {}, a.dienst, a.verbruik), ...(a.uitval ? { uitval: a.uitval } : {}) },
+    modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval),
   }).eq("id", o.id);
   await audit(admin, o.owner_id, "onderzoek_verkend", { object_type: "onderzoek", object_id: o.id, model: a.dienst, details: { themas: themas.length, ...a.verbruik } });
 }
@@ -47,7 +54,7 @@ async function antwoorden(admin: Admin, o: any) {
   if (!vraag) { await admin.from("onderzoeken").update({ werk: null, werk_sinds: null }).eq("id", o.id); return; }
   const themas = (o.themas ?? []) as Thema[];
   const p = antwoordPrompt({ onderwerp: o.onderwerp, overzicht: o.overzicht ?? "", themas, gesprek: gesprek.slice(0, -1), vraag: vraag.tekst });
-  const a = await zoekOpWeb({ naam: "antwoord", ...p, schema: antwoordSchema, maxZoek: 4 });
+  const a = await zoekOpWeb({ naam: "antwoord", ...p, schema: antwoordSchema, maxZoek: 5 });
   const r = a.ruw as { antwoord?: string; nieuwe_themas?: unknown };
   const nieuw = leesThemas(r.nieuwe_themas, themas);
   const bronnen = a.bronnen.slice(0, 8).map((b) => `- ${b.titel}: ${b.url}`).join("\n");
@@ -56,7 +63,7 @@ async function antwoorden(admin: Admin, o: any) {
     werk: null, werk_sinds: null, pogingen: 0, fout: null,
     themas: [...themas, ...nieuw],
     gesprek: [...gesprek, { rol: "agent", tekst: tekst.slice(0, 8000), op: new Date().toISOString() }],
-    modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik),
+    modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval),
   }).eq("id", o.id);
 }
 
@@ -87,7 +94,7 @@ async function uitwerken(admin: Admin, o: any) {
   const nogTeDoen = bijgewerkt.some((x) => x.gekozen && x.status === "wacht");
   await admin.from("onderzoeken").update({
     themas: bijgewerkt, fase: nogTeDoen ? "uitwerken" : "gereed", werk: nogTeDoen ? "uitwerken" : null,
-    werk_sinds: null, pogingen: 0, fout: null, modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik),
+    werk_sinds: null, pogingen: 0, fout: null, modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval),
   }).eq("id", o.id);
   await audit(admin, o.owner_id, "onderzoek_uitgewerkt", { object_type: "notitie", object_id: n.id, model: a.dienst, details: { thema: t.titel, ...a.verbruik } });
 }

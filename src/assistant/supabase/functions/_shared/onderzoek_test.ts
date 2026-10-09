@@ -65,8 +65,10 @@ Deno.test("bronnen: citaties van OpenAI en zoekresultaten van Claude, ontdubbeld
     { type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://a.nl/p", title: "A2" }, { type: "web_search_result", url: "https://b.nl", title: "B" }] },
     { type: "web_search_tool_result", content: { type: "web_search_tool_result_error", error_code: "max_uses_exceeded" } },
     { type: "text", text: "t", citations: [{ url: "https://c.nl", title: "C" }] },
+    { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url: "https://lpaforum.org/r", content: { type: "document", title: "Lp(a) Forum" } } },
+    { type: "web_fetch_tool_result", content: { type: "web_fetch_tool_error", error_code: "url_not_accessible" } },
   ]);
-  assertEquals(uniekeBronnen([...o, ...c, { titel: "x", url: "ftp://d" }]).map((b) => b.titel), ["A", "B", "C"]);
+  assertEquals(uniekeBronnen([...o, ...c, { titel: "x", url: "ftp://d" }]).map((b) => b.titel), ["A", "B", "C", "Lp(a) Forum"]);
 });
 
 Deno.test("zoekOpWeb: OpenAI valt uit, Claude pauzeert en antwoordt dan via het gereedschap", async () => {
@@ -97,6 +99,7 @@ Deno.test("zoekOpWeb: OpenAI valt uit, Claude pauzeert en antwoordt dan via het 
     assertEquals(verzoeken[1].messages.length, 2);
     assertEquals(verzoeken[1].messages[1].role, "assistant");
     assertEquals(verzoeken[0].tools[0].type, "web_search_20260209");
+    assertEquals(verzoeken[0].tools[1].type, "web_fetch_20260209");
     assertEquals(verzoeken[0].tool_choice, { type: "auto" });
     // Laag niveau van nadenken, anders past een verkenning niet in één ronde.
     assertEquals(verzoeken[0].output_config, { effort: "low" });

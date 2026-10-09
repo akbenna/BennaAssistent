@@ -29,6 +29,8 @@ export interface WebVraag {
   schema: unknown;
   /** Hoeveel zoekopdrachten het model mag doen. */
   maxZoek?: number;
+  /** Hoeveel gevonden pagina's het model helemaal mag lezen (alleen Claude; OpenAI leest zelf). */
+  maxLees?: number;
   /** Hoe lang één dienst mag doen voordat we opgeven, in milliseconden. */
   tijd?: number;
 }
@@ -66,6 +68,9 @@ export function bronnenClaude(inhoud: any[]): WebBron[] {
     if (b.type === "web_search_tool_result" && Array.isArray(b.content)) {
       for (const r of b.content) if (r.type === "web_search_result" && r.url) uit.push({ titel: r.title ?? "", url: r.url });
     }
+    if (b.type === "web_fetch_tool_result" && b.content?.type === "web_fetch_result" && b.content.url) {
+      uit.push({ titel: b.content.content?.title ?? "", url: b.content.url });
+    }
     if (b.type === "text") for (const c of b.citations ?? []) if (c.url) uit.push({ titel: c.title ?? "", url: c.url });
   }
   return uit;
@@ -90,7 +95,7 @@ async function viaClaude(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uit
   const berichten: Array<{ role: "user" | "assistant"; content: unknown }> = [{ role: "user", content: v.gebruiker }];
   const bronnen: WebBron[] = [];
   const verbruik: Verbruik = { invoer: 0, uitvoer: 0 };
-  const systeem = `${v.systeem}\n\nZoek eerst op het web. Sluit altijd af door het gereedschap "${v.naam}" één keer aan te roepen met je volledige antwoord; schrijf het antwoord niet als gewone tekst.`;
+  const systeem = `${v.systeem}\n\nZoek eerst op het web, en open met web_fetch de pagina's die er het meest toe doen: een zoekresultaat is maar een fragment. Sluit altijd af door het gereedschap "${v.naam}" één keer aan te roepen met je volledige antwoord; schrijf het antwoord niet als gewone tekst.`;
   for (let ronde = 0; ronde < 6; ronde++) {
     const resterend = eind - Date.now();
     if (resterend < 5_000) throw new Error("Claude: geen tijd meer");
@@ -109,6 +114,8 @@ async function viaClaude(v: WebVraag): Promise<Omit<WebAntwoord, "dienst" | "uit
         messages: berichten,
         tools: [
           { type: "web_search_20260209", name: "web_search", max_uses: v.maxZoek ?? 6 },
+          // Een zoekresultaat is een fragment; met web_fetch leest hij de pagina zelf.
+          { type: "web_fetch_20260209", name: "web_fetch", max_uses: v.maxLees ?? 4, max_content_tokens: 20000 },
           { name: v.naam, description: "Sla het eindantwoord op, in precies dit schema.", input_schema: v.schema, strict: true },
         ],
         tool_choice: { type: "auto" },
