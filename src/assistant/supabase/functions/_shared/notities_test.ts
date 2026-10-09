@@ -133,7 +133,7 @@ Deno.test("samenvatten via OpenAI leest de strikte JSON", async () => {
     const r = await vatSamen({ transcript: "x", mijnNaam: "Abdelkader", datum: "vandaag", projecten: [] });
     assert(r.dienst.startsWith("openai:"));
     assertEquals(r.uitkomst.actiepunten[0]!.van_mij, true);
-    assert(nep.gezien[0]!.startsWith("https://eu.api.openai.com/"), "standaard via de EU-endpoint");
+    assert(nep.gezien[0]!.startsWith("https://api.openai.com/"), "standaard via het gewone adres");
   } finally { nep.herstel(); }
 });
 
