@@ -14,12 +14,16 @@ Een dienst zonder sleutel wordt overgeslagen. De eerste die antwoordt wint; als
 er een uitviel, staat dat onderaan de notitie. Mail-triage, concepten en
 meedenken lopen buiten deze volgorde en blijven op Claude.
 
-Het afgesproken uitgangspunt: OpenAI eerst, via het EU-project; Mistral (EU)
-en Claude als uitval, zodat Claude niet de lange transcripten draagt.
+Het uitgangspunt: OpenAI eerst, Mistral (EU) en Claude als uitval, zodat
+Claude niet de lange transcripten draagt. OpenAI loopt via het gewone adres en
+dus in de VS: op 9 oktober 2026 bewust zo gekozen om de kwaliteit (sprekers,
+de eigen stem, vaktermen). Een EU-project bij OpenAI is alleen voor
+goedgekeurde zakelijke klanten; Mistral verwerkt wel in de EU, maar levert geen
+sprekers.
 
 Zoeken op het web gaat bij OpenAI via het gereedschap `web_search` van de
 Responses-API, op hetzelfde adres als de rest (`OPENAI_WEB_BASE_URL` kan het
-apart zetten, `OPENAI_WEB_MODEL` het model). Weigert het EU-project dat, dan
+apart zetten, `OPENAI_WEB_MODEL` het model). Weigert OpenAI dat, dan
 neemt Claude het over met `web_search_20260209` (`CLAUDE_WEB_MODEL`, standaard
 Claude Sonnet 5.5, op een laag niveau van nadenken via `CLAUDE_WEB_EFFORT`, zodat
 een stap binnen de tweeënhalve minuut van een Edge Function blijft). Beide

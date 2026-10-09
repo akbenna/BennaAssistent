@@ -64,7 +64,7 @@ export const tekstModel = (d: TekstDienst): string =>
     : d === "mistral" ? env("MISTRAL_TEXT_MODEL", "mistral-medium-latest")
     : WRITE_MODEL();
 
-export const openaiBasis = () => env("OPENAI_BASE_URL", "https://eu.api.openai.com/v1").replace(/\/$/, "");
+export const openaiBasis = () => env("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
 
 /**
  * Sommige modellen vragen dat de OpenAI-organisatie geverifieerd is. Zolang

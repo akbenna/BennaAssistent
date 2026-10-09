@@ -242,7 +242,7 @@ Keuzes:
 - **Geen ffmpeg, dus de browser doet het formaat.** Delen van vijf minuten, elk
   een eigen opnamesessie; WAV wordt op bytes geknipt; lange spraakmemo's worden
   in de browser naar 16 kHz mono omgezet (`src/lib/geluid.ts`).
-- **OpenAI eerst, voor uitschrijven én samenvatten**, via het EU-project. Uitval:
+- **OpenAI eerst, voor uitschrijven én samenvatten**, via het gewone adres (sinds 9 oktober 2026; het EU-project bleek alleen voor goedgekeurde zakelijke klanten). Uitval:
   Mistral voor spraak (Claude kan geen audio uitschrijven), Claude voor de
   samenvatting. Zo draagt Claude niet de lange transcripten.
 - **Het privacyfilter draait over het transcript.** Slaat het aan, dan wordt er

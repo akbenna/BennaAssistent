@@ -22,7 +22,7 @@ Bij de Edge Functions (Supabase → Edge Functions → Secrets):
 | `CRON_SECRET` | wat de nachtploeg meestuurt om binnen te komen |
 | `APP_URL` | waar de OAuth-terugkeer je heen stuurt, en waar links naar een notitie naartoe wijzen |
 | `OPENAI_API_KEY` | Notities: uitschrijven en samenvatten. Een sleutel uit een **nieuw** project met regio Europa; een bestaand project is niet om te zetten |
-| `OPENAI_BASE_URL` | standaard `https://eu.api.openai.com/v1`; alleen aanpassen als je bewust buiten de EU wilt |
+| `OPENAI_BASE_URL` | standaard `https://api.openai.com/v1` (verwerking in de VS, gekozen om de kwaliteit, 9 oktober 2026); `https://eu.api.openai.com/v1` werkt alleen met een OpenAI-project met Europese gegevensopslag |
 | `OPENAI_TRANSCRIBE_MODEL`, `OPENAI_TEXT_MODEL` | standaard `gpt-4o-transcribe-diarize` en `gpt-5-mini` |
 | `MISTRAL_API_KEY` | Notities: uitval voor het uitschrijven als OpenAI wegvalt (EU). Leeg laten mag; dan is er geen uitval |
 | `SPRAAK_VOLGORDE`, `TEKST_VOLGORDE`, `BEELD_VOLGORDE` | welke AI-dienst eerst; zie `docs/ai-diensten.md`. Leeg is de standaard: OpenAI eerst |

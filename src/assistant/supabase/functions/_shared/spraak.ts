@@ -37,7 +37,7 @@ export const openaiModel = () => env("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-transcri
 async function viaOpenAI(geluid: Uint8Array<ArrayBuffer>, mime: string, stem: Stem): Promise<RuwSegment[]> {
   const model = openaiModel();
   const sprekers = model.includes("diarize");
-  const basis = env("OPENAI_BASE_URL", "https://eu.api.openai.com/v1").replace(/\/$/, "");
+  const basis = env("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
   const data = await verstuur(`${basis}/audio/transcriptions`, env("OPENAI_API_KEY"), () => {
     const f = new FormData();
     f.append("file", new Blob([geluid], { type: mime }), `deel.${extensieVoor(mime)}`);
