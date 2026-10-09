@@ -26,6 +26,8 @@ import { GEEN_PROJECT, leesLabels, schoonDoi, trekRecht, verzamelBronnen, type G
 import type { WebBron } from "./web.ts";
 
 export type Relevantie = "hoog" | "middel" | "laag";
+export type BronSoort = "publicatie" | "congrespresentatie" | "persbericht" | "nieuws";
+const BRONSOORTEN: BronSoort[] = ["publicatie", "congrespresentatie", "persbericht", "nieuws"];
 
 export interface Thema {
   id: string;
@@ -35,6 +37,8 @@ export interface Thema {
   relevantie: Relevantie;
   waarom: string;
   soort: "studie" | "richtlijn" | "overzicht" | "overig";
+  /** Wat de bron is: dit bepaalt hoeveel gewicht het thema kan dragen. */
+  bron_soort: BronSoort;
   bronnen: WebBron[];
   /** Door jou gezet. */
   gekozen: boolean;
@@ -64,7 +68,7 @@ const bronSchema = {
 const themaSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["titel", "kern", "wat_gepresenteerd", "relevantie", "waarom", "soort", "bronnen"],
+  required: ["titel", "kern", "wat_gepresenteerd", "relevantie", "waarom", "soort", "bron_soort", "van_dit_congres", "bronnen"],
   properties: {
     titel: { type: "string", description: "Kort en specifiek, met de naam van de trial of richtlijn als die er is." },
     kern: { type: "string", description: "Eén zin: waar gaat het over." },
@@ -72,6 +76,8 @@ const themaSchema = {
     relevantie: { type: "string", enum: RELEVANTIES },
     waarom: { type: "string", description: "Eén of twee zinnen: waarom dit wel of niet ertoe doet voor een huisarts en kaderarts hart- en vaatziekten in Nederland." },
     soort: { type: "string", enum: SOORTEN },
+    bron_soort: { type: "string", enum: BRONSOORTEN, description: "De sterkste bron die je las: een publicatie in een tijdschrift, een congrespresentatie of abstract, een persbericht van een bedrijf, of een nieuwsartikel." },
+    van_dit_congres: { type: "boolean", description: "true alleen als een bron zegt dat dit op dit congres gepresenteerd of tegelijk gepubliceerd is. Een studie van een ander congres (ACC, AHA, EASD, ADA) of een algemene pagina over een middel is false." },
     bronnen: { ...bronSchema, description: "Minstens één pagina waar dit staat." },
   },
 };
@@ -92,7 +98,7 @@ export const antwoordSchema = {
   required: ["antwoord", "nieuwe_themas"],
   properties: {
     antwoord: { type: "string", description: "Het antwoord, als lopende tekst, met bij elke bewering de bron tussen haken." },
-    nieuwe_themas: { type: "array", items: themaSchema, description: "Alleen thema's die nog niet in de lijst staan en uit deze vraag voortkomen; anders leeg." },
+    nieuwe_themas: { type: "array", items: themaSchema, description: "Elke trial, richtlijn of analyse die je in het antwoord noemt en die nog niet in de lijst staat, als eigen thema. Leeg alleen als je niets nieuws noemt." },
   },
 };
 
@@ -151,7 +157,9 @@ const REGELS = `Regels die altijd gelden:
 - Onderscheid wat je las: een publicatie in een tijdschrift, een congrespresentatie of abstract, een persbericht, of een nieuwsartikel. Zeg welke het is.
 - Geef relatieve en absolute effecten zoals de bron ze geeft. Reken niets om tenzij het eenduidig is, en zeg dan dat je het afleidde.
 - Is het congres nog niet geweest, of vind je geen uitkomsten, zeg dat dan. Een programma is geen uitkomst.
-- Schrijf in helder Nederlands, verhalend, zonder marketingtaal. Geen gedachtestreepjes.`;
+- Alleen wat aantoonbaar op dit congres gepresenteerd of tegelijk gepubliceerd is, hoort erbij. Een studie van een ander congres (ACC, AHA, EASD, ADA), een algemene pagina over een middel of een oudere publicatie is geen thema van dit congres. Noem zoiets hooguit als achtergrond, en zeg dan waar het vandaan komt.
+- Neem bij een bron niet meer over dan erin staat, en laat er ook niets uit weg wat ertoe doet: noemt de bron een onzekerheid, een veiligheidssignaal of een beperking, dan noem jij die ook.
+- Schrijf in helder Nederlands, verhalend, zonder marketingtaal. Geen gedachtestreepjes, geen opmaak met sterretjes of kopjes: de tekst wordt als gewone tekst getoond.`;
 
 export function verkenPrompt(o: { onderwerp: string; url: string | null; focus: string | null; vandaag: string }) {
   return {
@@ -173,7 +181,7 @@ export function antwoordPrompt(o: { onderwerp: string; overzicht: string; themas
   return {
     systeem: `${WIE}
 
-Je hebt een congres voor hem verkend en jullie bespreken nu de thema's. Beantwoord zijn vraag; zoek opnieuw als dat nodig is. Komt er een thema bij dat nog niet in de lijst staat, zet het dan bij nieuwe_themas.
+Je hebt een congres voor hem verkend en jullie bespreken nu de thema's. Beantwoord zijn vraag; zoek opnieuw als dat nodig is. Elke trial, richtlijn of analyse die je in je antwoord noemt en die nog niet in de lijst staat, zet je ook bij nieuwe_themas, zodat hij hem kan aankruisen. Zeg in je antwoord bij elke studie of hij op dit congres gepresenteerd is, en wat voor bron je las.
 
 ${REGELS}`,
     gebruiker: `Congres: ${o.onderwerp}\n\nJouw overzicht:\n${o.overzicht}\n\nThema's:\n${lijstTekst}${eerder ? `\n\nEerder in dit gesprek:\n${eerder}` : ""}\n\nZijn vraag: ${o.vraag}`,
@@ -197,10 +205,27 @@ ${t.bronnen.map((b) => `- ${b.titel}: ${b.url}`).join("\n") || "- geen"}`,
   };
 }
 
+/** Trackingcodes van zoekdiensten uit een link: ze zeggen niets over de bron. */
+export function schoneUrl(url: string): string {
+  let u: URL;
+  try { u = new URL(url); } catch { return url; }
+  for (const k of [...u.searchParams.keys()]) if (/^(utm_[a-z]+|ref|ref_src)$/i.test(k)) u.searchParams.delete(k);
+  return u.toString().replace(/\?$/, "").replace(/\?#/, "#");
+}
+
+/** Hetzelfde voor elke link in een lopende tekst. */
+export function schoneLinks(tekst: string): string {
+  // Een punt of komma aan het eind hoort bij de zin, niet bij de link.
+  return tekst.replace(/https?:\/\/[^\s)\]]+/g, (u) => {
+    const slot = u.match(/[.,;:]+$/)?.[0] ?? "";
+    return schoneUrl(u.slice(0, u.length - slot.length)) + slot;
+  });
+}
+
 const bronnenUit = (v: unknown): WebBron[] =>
   (Array.isArray(v) ? v : []).map((b) => {
     const x = (b ?? {}) as Record<string, unknown>;
-    return { titel: tekst(x.titel, 300), url: tekst(x.url, 1000) };
+    return { titel: tekst(x.titel, 300), url: schoneUrl(tekst(x.url, 1000)) };
   }).filter((b) => /^https?:\/\//i.test(b.url)).slice(0, 10);
 
 /** Thema's uit een antwoord, met een eigen id en zonder dubbelen met wat er al is. */
@@ -213,12 +238,16 @@ export function leesThemas(v: unknown, bestaand: Thema[] = []): Thema[] {
     const titel = tekst(o.titel, 200);
     if (!titel || titels.has(titel.toLowerCase())) continue;
     titels.add(titel.toLowerCase());
+    // Wat volgens het model zelf niet van dit congres is, hoort niet in de lijst.
+    if (o.van_dit_congres === false) continue;
     const rel = tekst(o.relevantie, 10) as Relevantie;
     const soort = tekst(o.soort, 20) as Thema["soort"];
+    const bronSoort = tekst(o.bron_soort, 30) as BronSoort;
     uit.push({
       id: `t${++n}`, titel, kern: tekst(o.kern, 600), wat_gepresenteerd: tekst(o.wat_gepresenteerd, 2000),
       relevantie: RELEVANTIES.includes(rel) ? rel : "middel", waarom: tekst(o.waarom, 1000),
       soort: (SOORTEN as readonly string[]).includes(soort) ? soort : "overig",
+      bron_soort: BRONSOORTEN.includes(bronSoort) ? bronSoort : "nieuws",
       bronnen: bronnenUit(o.bronnen), gekozen: false, opmerking: "", status: null, notitie_id: null,
     });
   }

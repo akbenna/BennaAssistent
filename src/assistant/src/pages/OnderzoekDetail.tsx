@@ -130,7 +130,7 @@ export function OnderzoekDetail() {
                 </label>
                 <div className="meta">
                   <Merkje kleur={RELEVANTIE_KLEUR[t.relevantie]}>{t.relevantie}</Merkje>
-                  <span className="mini">{t.soort}</span>
+                  <span className="mini">{t.soort}{t.bron_soort ? `, bron: ${t.bron_soort}` : ""}</span>
                   {t.status === "wacht" && <Merkje kleur="blauw">in de wachtrij</Merkje>}
                   {t.status === "gereed" && t.notitie_id && <Link className="mini" to={`/notities/${t.notitie_id}`}>Naar de notitie</Link>}
                   {t.status === "fout" && <Merkje kleur="rood">mislukt</Merkje>}

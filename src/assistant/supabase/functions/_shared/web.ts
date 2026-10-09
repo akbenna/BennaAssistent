@@ -16,6 +16,7 @@
  * Die gaan als bronnen mee, los van wat het model zelf als bron opgeeft.
  */
 import { WRITE_MODEL, type Verbruik } from "./claude.ts";
+import { schoneUrl } from "./onderzoek.ts";
 import { opVolgorde, openaiBasis, openaiResponses, leesResponsTekst, tekstModel, volgorde } from "./diensten.ts";
 
 const env = (k: string, d = "") => Deno.env.get(k) || d;
@@ -41,7 +42,7 @@ export interface WebAntwoord { ruw: unknown; bronnen: WebBron[]; verbruik: Verbr
 export function uniekeBronnen(lijst: WebBron[]): WebBron[] {
   const gezien = new Map<string, WebBron>();
   for (const b of lijst) {
-    const url = (b.url ?? "").trim();
+    const url = schoneUrl((b.url ?? "").trim());
     if (!/^https?:\/\//i.test(url)) continue;
     const sleutel = url.replace(/[#?].*$/, "").replace(/\/$/, "").toLowerCase();
     if (!gezien.has(sleutel)) gezien.set(sleutel, { titel: (b.titel ?? "").trim().slice(0, 300) || url, url: url.slice(0, 1000) });

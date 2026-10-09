@@ -13,7 +13,7 @@
 import { adminClient, audit, cors, isCron, json, userId, type Admin } from "../_shared/core.ts";
 import { zoekOpWeb } from "../_shared/web.ts";
 import {
-  antwoordPrompt, antwoordSchema, bronnenTekst, leesThemas, naarUitkomst, uitwerkPrompt, uitwerkSchema,
+  antwoordPrompt, antwoordSchema, bronnenTekst, schoneLinks, leesThemas, naarUitkomst, uitwerkPrompt, uitwerkSchema,
   verkenPrompt, verkenSchema, type Bericht, type Thema,
 } from "../_shared/onderzoek.ts";
 import type { Verbruik } from "../_shared/claude.ts";
@@ -42,7 +42,7 @@ async function verkennen(admin: Admin, o: any) {
   if (!themas.length) throw new Error("De agent vond geen thema's. Probeer een preciezere naam of zet de website erbij.");
   await admin.from("onderzoeken").update({
     fase: "kiezen", werk: null, werk_sinds: null, pogingen: 0, fout: null,
-    overzicht: String(r.overzicht ?? "").slice(0, 8000), themas, bronnen: a.bronnen,
+    overzicht: schoneLinks(String(r.overzicht ?? "")).slice(0, 8000), themas, bronnen: a.bronnen,
     modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval),
   }).eq("id", o.id);
   await audit(admin, o.owner_id, "onderzoek_verkend", { object_type: "onderzoek", object_id: o.id, model: a.dienst, details: { themas: themas.length, ...a.verbruik } });
@@ -58,7 +58,7 @@ async function antwoorden(admin: Admin, o: any) {
   const r = a.ruw as { antwoord?: string; nieuwe_themas?: unknown };
   const nieuw = leesThemas(r.nieuwe_themas, themas);
   const bronnen = a.bronnen.slice(0, 8).map((b) => `- ${b.titel}: ${b.url}`).join("\n");
-  const tekst = `${String(r.antwoord ?? "").trim() || "Daar vond ik niets over."}${nieuw.length ? `\n\nNieuw in de lijst: ${nieuw.map((t) => t.titel).join(", ")}.` : ""}${bronnen ? `\n\nBronnen:\n${bronnen}` : ""}`;
+  const tekst = `${schoneLinks(String(r.antwoord ?? "").trim()) || "Daar vond ik niets over."}${nieuw.length ? `\n\nNieuw in de lijst: ${nieuw.map((t) => t.titel).join(", ")}.` : ""}${bronnen ? `\n\nBronnen:\n${bronnen}` : ""}`;
   await admin.from("onderzoeken").update({
     werk: null, werk_sinds: null, pogingen: 0, fout: null,
     themas: [...themas, ...nieuw],

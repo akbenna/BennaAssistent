@@ -1,10 +1,10 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { leesThemas, naarUitkomst, uitwerkPrompt, verkenSchema, uitwerkSchema, antwoordSchema, type Thema } from "./onderzoek.ts";
+import { leesThemas, naarUitkomst, schoneLinks, schoneUrl, uitwerkPrompt, verkenSchema, uitwerkSchema, antwoordSchema, type Thema } from "./onderzoek.ts";
 import { bronnenClaude, citatiesOpenAI, uniekeBronnen, zoekOpWeb } from "./web.ts";
 
 const thema = (v: Partial<Thema> = {}): Thema => ({
   id: "t1", titel: "Lp(a)-verlaging", kern: "", wat_gepresenteerd: "", relevantie: "hoog", waarom: "", soort: "studie",
-  bronnen: [{ titel: "ESC", url: "https://www.escardio.org/x" }], gekozen: true, opmerking: "", status: "wacht", notitie_id: null, ...v,
+  bron_soort: "congrespresentatie", bronnen: [{ titel: "ESC", url: "https://www.escardio.org/x" }], gekozen: true, opmerking: "", status: "wacht", notitie_id: null, ...v,
 });
 
 Deno.test("leesThemas: id's lopen door, dubbelen en lege titels vallen weg, hoog eerst, alleen http-bronnen", () => {
@@ -132,4 +132,22 @@ Deno.test("OpenAI: vraagt het model om verificatie, dan één keer opnieuw met e
   } finally {
     globalThis.fetch = orig;
   }
+});
+
+Deno.test("leesThemas: wat niet van dit congres is valt weg; bronsoort en schone links", () => {
+  const t = leesThemas([
+    { titel: "BRIDGE", relevantie: "hoog", van_dit_congres: true, bron_soort: "congrespresentatie", bronnen: [{ titel: "ACC", url: "https://www.acc.org/a?utm_source=openai" }] },
+    { titel: "Orforglipron meta-analyse (ACC.26)", relevantie: "hoog", van_dit_congres: false, bron_soort: "publicatie" },
+    { titel: "Onbekend soort", relevantie: "laag", bron_soort: "blog" },
+  ]);
+  assertEquals(t.map((x) => [x.titel, x.bron_soort]), [["BRIDGE", "congrespresentatie"], ["Onbekend soort", "nieuws"]]);
+  assertEquals(t[0]!.bronnen[0]!.url, "https://www.acc.org/a");
+});
+
+Deno.test("schoneUrl en schoneLinks: trackingcodes weg, de rest van de link blijft", () => {
+  assertEquals(schoneUrl("https://a.org/x?utm_source=openai"), "https://a.org/x");
+  assertEquals(schoneUrl("https://a.org/x?id=5&utm_source=openai&p=2"), "https://a.org/x?id=5&p=2");
+  assertEquals(schoneUrl("https://a.org/x?utm_source=openai&id=5"), "https://a.org/x?id=5");
+  assertEquals(schoneUrl("https://doi.org/10.1/abc"), "https://doi.org/10.1/abc");
+  assertEquals(schoneLinks("Zie (https://acc.org/a?utm_source=openai) en https://b.nl/c?utm_medium=x."), "Zie (https://acc.org/a) en https://b.nl/c.");
 });
