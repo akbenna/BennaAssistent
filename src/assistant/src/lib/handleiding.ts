@@ -89,6 +89,13 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         ],
       },
       {
+        kop: "Verslag rondsturen en toezeggingen",
+        tekst: [
+          "Onder een nagelezen notitie staat Verslag als concept in Gmail. De assistent zet dan een mail klaar aan de genodigden van de afspraak: de eerste alinea van de samenvatting, de besluiten, per persoon de actiepunten, de vervolgafspraken en wat nog open is. De adressen komen uit je agenda; zonder afspraak vul je ze in Gmail zelf in. Er gaat niets vanzelf weg: je leest het concept na en verstuurt het daar.",
+          "Wat anderen toezegden, staat bij elkaar onder Toezeggingen, per persoon, met wat over tijd is bovenaan. Met Herinnering komt er een vriendelijke herinnering als concept in Gmail, aan het adres van die persoon als de naam eenduidig bij een genodigde past; anders vul je het zelf in. Met Afgehandeld verdwijnt de toezegging uit de lijst. Dat blijft zo, ook als je de notitie opnieuw laat samenvatten.",
+        ],
+      },
+      {
         kop: "Notitie zonder opname",
         tekst: [
           "Onder Notitie typ je wat je wilt vastleggen: een gedachte, een afspraak bij de koffieautomaat, wat er op het whiteboard stond. Een foto van dat whiteboard of een flipover kan erbij, en een link naar een artikel ook. De assistent haalt de tekst van dat artikel op, alleen van een gewone webpagina: wat achter een inlogscherm zit of pas in de browser wordt opgebouwd, lukt niet, en dan staat dat bij de link.",
@@ -132,7 +139,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
       {
         kop: "Hoe het werkt",
         tekst: [
-          "Noem een congres, bijvoorbeeld ESC Congress 2026, en zet er eventueel de website en waar je in het bijzonder op let bij. De agent zoekt op internet het programma, de hotline- en late-breaking sessies, nieuwe richtlijnen, gelijktijdige publicaties en de verslagen erover. Na een paar minuten legt hij acht tot twaalf thema's voor, met bij elk wat er gepresenteerd is, waarom het voor jou als huisarts en kaderarts hart- en vaatziekten wel of niet ertoe doet, en de pagina's waar het staat.",
+          "Noem een congres, bijvoorbeeld ESC Congress 2026, en zet er eventueel de website en waar je in het bijzonder op let bij. De agent zoekt op internet het programma, de hotline- en late-breaking sessies, nieuwe richtlijnen, gelijktijdige publicaties en de verslagen erover. Hij zoekt in twee rondes: eerst breed, dan gericht per aandachtsgebied (lipiden en Lp(a), hypertensie, diabetes, obesitas, nierschade, hartfalen en AF), bij voorkeur in het presentatiearchief van het congres zelf. Na een minuut of vijf legt hij de thema's voor, met bij elk wat er gepresenteerd is, waarom het voor jou als huisarts en kaderarts hart- en vaatziekten wel of niet ertoe doet, en de pagina's waar het staat.",
           "Jij kiest. Vink aan wat je uitgewerkt wilt hebben en schrijf erbij wat je er in het bijzonder over wilt weten. Onder Bespreken stel je de agent vragen; hij zoekt opnieuw als dat nodig is, en wat er nieuw bij komt, zet hij als thema in de lijst.",
           "Met Uitwerken maakt de agent van elk gekozen thema een eigen notitie: de studie of richtlijn, opzet, populatie, eindpunten en de cijfers zoals de bron ze geeft, wat het betekent naast de NHG-standaard, en de kanttekeningen. Die notities staan tussen je andere notities, doen mee met zoeken en Vraag het je notities, en komen als Google Doc in de map Wetenschap/<congres> in je Drive. Ze tellen niet mee in het nascholingslogboek, want je was er niet.",
         ],
@@ -272,6 +279,6 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
 export function hoofdstukVoor(pad: string): Hoofdstuk | null {
   // Delen valt onder Taken: het is dezelfde vorm, alleen binnengekomen via het
   // deelmenu van de telefoon.
-  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") || pad === "/nascholing" ? "/notities" : pad.startsWith("/onderzoek/") ? "/onderzoek" : pad;
+  const gezocht = pad === "/delen" ? "/taken" : pad.startsWith("/notities/") || pad === "/nascholing" || pad === "/toezeggingen" ? "/notities" : pad.startsWith("/onderzoek/") ? "/onderzoek" : pad;
   return HOOFDSTUKKEN.find((h) => h.pad === gezocht) ?? null;
 }

@@ -762,3 +762,7 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
 .gesprek .bericht { padding: 0.5rem 0.7rem; border-radius: var(--radius-klein); background: var(--vlak2); }
 .gesprek .bericht.ik { background: var(--kbg); }
 .gesprek input { font: inherit; padding: 0.5rem 0.65rem; border: 1px solid var(--lijn); border-radius: var(--radius-klein); background: var(--vlak); color: var(--ink); }
+
+.toezegging { display: flex; gap: 0.6rem; align-items: flex-start; flex-wrap: wrap; padding: 0.5rem 0; border-top: 1px solid var(--lijn); }
+.toezegging:first-of-type { border-top: 0; }
+.toezegging .groei { flex: 1 1 14rem; min-width: 0; }

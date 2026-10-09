@@ -420,6 +420,13 @@ async function vatNotitieSamen(admin: Admin, n: any) {
     const zelfde = oud.find((x) => x.event_id && x.wat === a.wat && x.datum === a.datum);
     if (zelfde?.event_id) a.event_id = zelfde.event_id;
   }
+  // Net zo voor toezeggingen: wat je al afvinkte of waarvoor je een herinnering maakte, blijft dat.
+  const oudeActies = (n.samenvatting?.actiepunten ?? []) as Uitkomst["actiepunten"];
+  for (const x of r.actiepunten) {
+    const zelfde = oudeActies.find((y) => y.wie === x.wie && y.wat === x.wat);
+    if (zelfde?.afgehandeld) x.afgehandeld = true;
+    if (zelfde?.herinnerd_op) x.herinnerd_op = zelfde.herinnerd_op;
+  }
 
   const { error } = await admin.from("notities").update({
     status: "gereed", titel: r.titel, samenvatting: r, transcript, duur_sec: duur, fout: null,

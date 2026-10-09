@@ -1,9 +1,10 @@
 import { maakVoorbereiding, type Voorbereiding, type VorigeNotitie } from "./voorbereiding";
+import type { NotitieMetActies } from "./toezeggingen";
 import { roepFunctie, supabase } from "./supabase";
 import { vandaag } from "./format";
 import { metActueleDeadlines, weekVan } from "./week";
 import type {
-  Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
+  Actiepunt, Verslag, Bron, Concept, Dagoverzicht, Filter, Item, Logregel, Notitie, NotitieSoort,
   Foto, Gezondheid, Koppeling, NascholingRegel, NotitieAntwoord, Onderzoek, Opname, OpnameInstellingen, OpnameRegel, Opvolging, Prioriteit, Project, Schuldig, Sjabloon,
   TaakRij, TaakStatus, Terugkerend, TerugkerendRij, Verbruik, Weekoverzicht,
 } from "../types/db";
@@ -679,4 +680,29 @@ export async function verwijderOnderzoek(id: string): Promise<void> {
 /** De agent een duw geven; de planner doet het anders binnen twee minuten. */
 export async function verwerkOnderzoek(): Promise<void> {
   await roepFunctie("onderzoek-verwerk").catch(() => { /* de planner is het vangnet */ });
+}
+
+/* ----------------------------------------------- verslag en toezeggingen -- */
+
+/** Verslag of herinnering als concept in Gmail; verstuurd wordt er niets. */
+export async function notitieMail(notitieId: string, actie: "notulen" | "herinnering", index?: number): Promise<{ ontvangers: string[]; gmail_link: string }> {
+  return roepFunctie("notitie-mail", { notitie_id: notitieId, actie, index });
+}
+
+/** Notities met actiepunten, voor het overzicht van wat anderen nog moeten doen. */
+export async function haalNotitiesMetActies(): Promise<NotitieMetActies[]> {
+  return controleer(await supabase.from("notities").select("id,titel,gestart_op,samenvatting")
+    .in("status", ["gereed", "goedgekeurd"]).neq("bron", "onderzoek")
+    .order("gestart_op", { ascending: false }).limit(200).returns<NotitieMetActies[]>());
+}
+
+/** Eén actiepunt bijwerken (afgevinkt), zonder de rest van het verslag aan te raken. */
+export async function werkActiepuntBij(notitieId: string, index: number, velden: Partial<Actiepunt>): Promise<void> {
+  const { data, error } = await supabase.from("notities").select("samenvatting").eq("id", notitieId).single();
+  if (error || !data) throw new Error(error?.message ?? "Notitie niet gevonden");
+  const r = (data as { samenvatting: Verslag | null }).samenvatting;
+  if (!r?.actiepunten?.[index]) throw new Error("Actiepunt niet gevonden");
+  r.actiepunten[index] = { ...r.actiepunten[index]!, ...velden };
+  const { error: e2 } = await supabase.from("notities").update({ samenvatting: r }).eq("id", notitieId);
+  if (e2) throw new Error(e2.message);
 }

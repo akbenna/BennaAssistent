@@ -7,7 +7,7 @@ import { STATUS_TEKST } from "../components/TaakKaart";
 import { useSessie } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 import {
-  haalFotos, haalOpname, haalOpnameInstellingen, haalProjecten, haalTakenVanOpname, haalVerwant, maakTaakUitOpname, voegFotoToe,
+  haalFotos, haalOpname, haalOpnameInstellingen, haalProjecten, haalTakenVanOpname, haalVerwant, maakTaakUitOpname, notitieMail, voegFotoToe, werkActiepuntBij,
   notitieActie, verwerkOpnames, verwijderOpname, werkOpnameBij,
 } from "../lib/data";
 import { datumKort, datumLang, tijdKort } from "../lib/format";
@@ -133,6 +133,13 @@ export function NotitieDetail() {
     void doe(async () => { await notitieActie(notitie.id, "bevestig"); await verwerkOpnames(); }, "Wordt samengevat.");
   };
 
+  const klaar = notitie.status === "gereed" || notitie.status === "goedgekeurd";
+  const verslagSturen = () => doe(async () => {
+    const res = await notitieMail(notitie.id, "notulen");
+    meld(res.ontvangers.length
+      ? `Het verslag staat als concept in Gmail, aan ${res.ontvangers.length} ${res.ontvangers.length === 1 ? "genodigde" : "genodigden"}. Lees het na en verstuur het daar.`
+      : "Het verslag staat als concept in Gmail. Er waren geen genodigden in de agenda; vul de ontvangers daar zelf in.");
+  });
   const takenOpTitel = new Map((taken.data ?? []).map((t) => [t.titel.toLowerCase(), t]));
   const alsTaak = (tekst: string, deadline: string | null) =>
     doe(() => maakTaakUitOpname(notitie, tekst.slice(0, 200), deadline), "Op je lijst gezet.");
@@ -269,9 +276,20 @@ export function NotitieDetail() {
                         </button>
                       ) : a.van_mij ? (
                         <button type="button" className="knop klein" disabled={bezig} onClick={() => void alsTaak(a.wat, a.deadline || null)}>Op mijn lijst</button>
+                      ) : a.afgehandeld ? (
+                        <Merkje kleur="groen">afgehandeld</Merkje>
                       ) : (
-                        <button type="button" className="knop klein" disabled={bezig}
-                          onClick={() => void alsTaak(`Navragen bij ${a.wie}: ${a.wat}`, a.deadline || null)}>Volg op</button>
+                        <span className="knoprij">
+                          <button type="button" className="knop klein" disabled={bezig}
+                            onClick={() => void alsTaak(`Navragen bij ${a.wie}: ${a.wat}`, a.deadline || null)}>Volg op</button>
+                          <button type="button" className="knop klein" disabled={bezig || !klaar}
+                            onClick={() => void doe(async () => {
+                              const res = await notitieMail(notitie.id, "herinnering", i);
+                              meld(res.ontvangers.length ? `Herinnering staat als concept in Gmail, aan ${res.ontvangers.join(", ")}.` : "Herinnering staat als concept in Gmail. Vul daar de ontvanger in.");
+                            })}>Herinnering{a.herinnerd_op ? " ✓" : ""}</button>
+                          <button type="button" className="knop klein kaal" disabled={bezig}
+                            onClick={() => void doe(() => werkActiepuntBij(notitie.id, i, { afgehandeld: true }))}>Afgehandeld</button>
+                        </span>
                       )}
                     </li>
                   );
@@ -448,6 +466,9 @@ export function NotitieDetail() {
         {notitie.status === "gereed" && <button type="button" className="knop primair" onClick={() => void goedkeuren()} disabled={bezig}>Goedkeuren</button>}
         {notitie.drive_doc_id && (
           <a className="knop" href={`https://docs.google.com/document/d/${encodeURIComponent(notitie.drive_doc_id)}/edit`} target="_blank" rel="noreferrer">Google Doc</a>
+        )}
+        {klaar && notitie.bron !== "onderzoek" && notitie.soort !== "congres" && r && (
+          <button type="button" className="knop" onClick={() => void verslagSturen()} disabled={bezig}>Verslag als concept in Gmail</button>
         )}
         {(notitie.status === "gereed" || notitie.status === "goedgekeurd") && notitie.bron !== "onderzoek" && (
           <button type="button" className="knop" onClick={() => void opnieuwSamenvatten()} disabled={bezig}>Opnieuw samenvatten</button>

@@ -188,6 +188,45 @@ ${REGELS}`,
   };
 }
 
+/**
+ * De tweede ronde van een verkenning. Een brede zoektocht vindt wat de meeste
+ * aandacht kreeg: hartfalen, ablatie, zeldzame cardiomyopathieën. De
+ * onderwerpen die voor de eigenaar het meest tellen, kregen minder koppen en
+ * vielen in de proef met ESC 2026 buiten de eerste lijst. Daarom zoekt de
+ * agent daarna per aandachtsgebied, bij voorkeur in het presentatiearchief van
+ * het congres zelf.
+ */
+export const AANDACHTSGEBIEDEN = ["lipiden en Lp(a)", "hypertensie", "diabetes type 2", "obesitas en leefstijl", "chronische nierschade", "hartfalen in de eerste lijn", "atriumfibrilleren en antistolling"];
+
+export function aanvulPrompt(o: { onderwerp: string; focus: string | null; themas: Thema[] }) {
+  const lijstTekst = o.themas.map((t) => `- ${t.titel}`).join("\n");
+  return {
+    systeem: `${WIE}
+
+Je hebt een congres breed verkend. Zoek nu gericht per aandachtsgebied naar wat er op dit congres gepresenteerd is, bij voorkeur in het presentatiearchief van het congres zelf (voor de ESC is dat esc365.escardio.org) en in de verslagen van de Hot Line-sessies. Zet elke trial, richtlijn of analyse die nog niet in de lijst staat bij nieuwe_themas. Vat in het antwoord in een paar zinnen samen wat je per aandachtsgebied vond, en zeg het eerlijk als je voor een gebied niets vond.
+
+${REGELS}`,
+    gebruiker: `Congres: ${o.onderwerp}
+Aandachtsgebieden: ${[...AANDACHTSGEBIEDEN, ...(o.focus ? [o.focus] : [])].join("; ")}
+
+Thema's die er al zijn:
+${lijstTekst || "- geen"}`,
+  };
+}
+
+/**
+ * Opmaak die als gewone tekst wordt getoond (sterretjes, kopjes) eruit. Het
+ * model krijgt de opdracht het niet te doen, en doet het toch soms.
+ */
+export function zonderOpmaak(t: string): string {
+  return t
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/__([^_\n]+)__/g, "$1")
+    .replace(/(^|\s)\*([^*\n]+)\*(?=\s|[.,;:]|$)/g, "$1$2")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*\*\s+/gm, "- ");
+}
+
 export function uitwerkPrompt(o: { onderwerp: string; thema: Thema }) {
   const t = o.thema;
   return {
@@ -244,8 +283,8 @@ export function leesThemas(v: unknown, bestaand: Thema[] = []): Thema[] {
     const soort = tekst(o.soort, 20) as Thema["soort"];
     const bronSoort = tekst(o.bron_soort, 30) as BronSoort;
     uit.push({
-      id: `t${++n}`, titel, kern: tekst(o.kern, 600), wat_gepresenteerd: tekst(o.wat_gepresenteerd, 2000),
-      relevantie: RELEVANTIES.includes(rel) ? rel : "middel", waarom: tekst(o.waarom, 1000),
+      id: `t${++n}`, titel: zonderOpmaak(titel), kern: zonderOpmaak(tekst(o.kern, 600)), wat_gepresenteerd: zonderOpmaak(tekst(o.wat_gepresenteerd, 2000)),
+      relevantie: RELEVANTIES.includes(rel) ? rel : "middel", waarom: zonderOpmaak(tekst(o.waarom, 1000)),
       soort: (SOORTEN as readonly string[]).includes(soort) ? soort : "overig",
       bron_soort: BRONSOORTEN.includes(bronSoort) ? bronSoort : "nieuws",
       bronnen: bronnenUit(o.bronnen), gekozen: false, opmerking: "", status: null, notitie_id: null,
