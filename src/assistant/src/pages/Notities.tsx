@@ -139,7 +139,8 @@ export function Notities() {
         <header>
           <h2>Notities</h2>
           <span className="aantal">{lijst.data?.length || ""}</span>
-          <span style={{ marginLeft: "auto", display: "flex", gap: "0.8rem" }}>
+          <span style={{ marginLeft: "auto", display: "flex", gap: "0.8rem", flexWrap: "wrap" }}>
+            <Link className="mini" to="/toezeggingen">Toezeggingen</Link>
             <Link className="mini" to="/onderzoek">Congres-agent</Link>
             <Link className="mini" to="/nascholing">Nascholingslogboek</Link>
           </span>

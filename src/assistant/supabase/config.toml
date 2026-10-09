@@ -50,3 +50,6 @@ verify_jwt = true
 
 [functions.onderzoek-verwerk]
 verify_jwt = false
+
+[functions.notitie-mail]
+verify_jwt = true

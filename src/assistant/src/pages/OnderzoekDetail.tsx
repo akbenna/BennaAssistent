@@ -9,7 +9,8 @@ import type { Onderzoek, OnderzoekThema } from "../types/db";
 const host = (u: string) => { try { return new URL(u).hostname; } catch { return u; } };
 const RELEVANTIE_KLEUR = { hoog: "groen", middel: "amber", laag: undefined } as const;
 const WERK_TEKST: Record<NonNullable<Onderzoek["werk"]>, string> = {
-  verkennen: "De agent verkent het congres. Dat duurt een paar minuten; je kunt het scherm sluiten.",
+  verkennen: "De agent verkent het congres breed. Daarna zoekt hij nog gericht per aandachtsgebied. Samen duurt dat een minuut of vijf; je kunt het scherm sluiten.",
+  aanvullen: "De brede verkenning is klaar. De agent zoekt nu gericht naar lipiden en Lp(a), hypertensie, diabetes, obesitas, nierschade, hartfalen en AF…",
   antwoorden: "De agent zoekt een antwoord op je vraag…",
   uitwerken: "De agent werkt de gekozen thema's één voor één uit. Elk thema duurt een paar minuten.",
 };

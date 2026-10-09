@@ -224,6 +224,10 @@ export interface Actiepunt {
   wat: string;
   deadline: string;
   van_mij: boolean;
+  /** Door jou gezet: de ander heeft het gedaan, of het hoeft niet meer. */
+  afgehandeld?: boolean;
+  /** Wanneer er een herinnering als concept klaarstond. */
+  herinnerd_op?: string;
 }
 
 export interface VervolgAfspraak {
@@ -387,7 +391,7 @@ export interface Onderzoek {
   url: string | null;
   focus: string | null;
   fase: "verkennen" | "kiezen" | "uitwerken" | "gereed" | "fout";
-  werk: "verkennen" | "antwoorden" | "uitwerken" | null;
+  werk: "verkennen" | "aanvullen" | "antwoorden" | "uitwerken" | null;
   werk_sinds: string | null;
   pogingen: number;
   overzicht: string | null;

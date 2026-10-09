@@ -13,7 +13,7 @@
 import { adminClient, audit, cors, isCron, json, userId, type Admin } from "../_shared/core.ts";
 import { zoekOpWeb } from "../_shared/web.ts";
 import {
-  antwoordPrompt, antwoordSchema, bronnenTekst, schoneLinks, leesThemas, naarUitkomst, uitwerkPrompt, uitwerkSchema,
+  aanvulPrompt, antwoordPrompt, antwoordSchema, bronnenTekst, schoneLinks, zonderOpmaak, leesThemas, naarUitkomst, uitwerkPrompt, uitwerkSchema,
   verkenPrompt, verkenSchema, type Bericht, type Thema,
 } from "../_shared/onderzoek.ts";
 import type { Verbruik } from "../_shared/claude.ts";
@@ -41,9 +41,10 @@ async function verkennen(admin: Admin, o: any) {
   const r = a.ruw as { overzicht?: string; themas?: unknown };
   const themas = leesThemas(r.themas);
   if (!themas.length) throw new Error("De agent vond geen thema's. Probeer een preciezere naam of zet de website erbij.");
+  // Daarna nog een ronde gericht per aandachtsgebied; pas dan is het aan jou.
   await admin.from("onderzoeken").update({
-    fase: "kiezen", werk: null, werk_sinds: null, pogingen: 0, fout: null,
-    overzicht: schoneLinks(String(r.overzicht ?? "")).slice(0, 8000), themas, bronnen: a.bronnen,
+    fase: "verkennen", werk: "aanvullen", werk_sinds: null, pogingen: 0, fout: null,
+    overzicht: zonderOpmaak(schoneLinks(String(r.overzicht ?? ""))).slice(0, 8000), themas, bronnen: a.bronnen,
     modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval, a.meldingen),
   }).eq("id", o.id);
   await audit(admin, o.owner_id, "onderzoek_verkend", { object_type: "onderzoek", object_id: o.id, model: a.dienst, details: { themas: themas.length, ...a.verbruik } });
@@ -59,11 +60,27 @@ async function antwoorden(admin: Admin, o: any) {
   const r = a.ruw as { antwoord?: string; nieuwe_themas?: unknown };
   const nieuw = leesThemas(r.nieuwe_themas, themas);
   const bronnen = a.bronnen.slice(0, 8).map((b) => `- ${b.titel}: ${b.url}`).join("\n");
-  const tekst = `${schoneLinks(String(r.antwoord ?? "").trim()) || "Daar vond ik niets over."}${nieuw.length ? `\n\nNieuw in de lijst: ${nieuw.map((t) => t.titel).join(", ")}.` : ""}${bronnen ? `\n\nBronnen:\n${bronnen}` : ""}`;
+  const tekst = `${zonderOpmaak(schoneLinks(String(r.antwoord ?? "").trim())) || "Daar vond ik niets over."}${nieuw.length ? `\n\nNieuw in de lijst: ${nieuw.map((t) => t.titel).join(", ")}.` : ""}${bronnen ? `\n\nBronnen:\n${bronnen}` : ""}`;
   await admin.from("onderzoeken").update({
     werk: null, werk_sinds: null, pogingen: 0, fout: null,
     themas: [...themas, ...nieuw],
     gesprek: [...gesprek, { rol: "agent", tekst: tekst.slice(0, 8000), op: new Date().toISOString() }],
+    modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval, a.meldingen),
+  }).eq("id", o.id);
+}
+
+async function aanvullen(admin: Admin, o: any) {
+  const themas = (o.themas ?? []) as Thema[];
+  const p = aanvulPrompt({ onderwerp: o.onderwerp, focus: o.focus, themas });
+  const a = await zoekOpWeb({ naam: "aanvulling", ...p, schema: antwoordSchema, maxZoek: 8 });
+  const r = a.ruw as { antwoord?: string; nieuwe_themas?: unknown };
+  const nieuw = leesThemas(r.nieuwe_themas, themas);
+  const tekst = `Gericht gezocht per aandachtsgebied. ${zonderOpmaak(schoneLinks(String(r.antwoord ?? "").trim()))}${nieuw.length ? `\n\nNieuw in de lijst: ${nieuw.map((t) => t.titel).join(", ")}.` : "\n\nDit leverde geen nieuwe thema's op."}`;
+  await admin.from("onderzoeken").update({
+    fase: "kiezen", werk: null, werk_sinds: null, pogingen: 0, fout: null,
+    themas: [...themas, ...nieuw],
+    bronnen: [...((o.bronnen ?? []) as unknown[]), ...a.bronnen].slice(0, 80),
+    gesprek: [...((o.gesprek ?? []) as Bericht[]), { rol: "agent", tekst: tekst.slice(0, 8000), op: new Date().toISOString() }],
     modellen: telOp(o.modellen ?? {}, a.dienst, a.verbruik, a.uitval, a.meldingen),
   }).eq("id", o.id);
 }
@@ -100,7 +117,7 @@ async function uitwerken(admin: Admin, o: any) {
   await audit(admin, o.owner_id, "onderzoek_uitgewerkt", { object_type: "notitie", object_id: n.id, model: a.dienst, details: { thema: t.titel, ...a.verbruik } });
 }
 
-const STAP = { verkennen, antwoorden, uitwerken } as const;
+const STAP = { verkennen, aanvullen, antwoorden, uitwerken } as const;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -138,7 +155,8 @@ Deno.serve(async (req) => {
       await admin.from("onderzoeken").update({
         werk_sinds: null, fout: reden, themas,
         // Na drie pogingen: bij verkennen is het onderzoek mislukt; bij een thema gaat de agent door met het volgende.
-        ...(op ? (o.werk === "verkennen" ? { werk: null, fase: "fout" } : o.werk === "antwoorden" ? { werk: null } : { pogingen: 0 }) : {}),
+        // Mislukt de aanvulling, dan is de brede verkenning er nog: die gaat gewoon naar jou.
+        ...(op ? (o.werk === "verkennen" ? { werk: null, fase: "fout" } : o.werk === "aanvullen" ? { werk: null, fase: "kiezen" } : o.werk === "antwoorden" ? { werk: null } : { pogingen: 0 }) : {}),
       }).eq("id", o.id);
     }
   }

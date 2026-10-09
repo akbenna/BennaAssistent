@@ -152,7 +152,8 @@ export function encodeSubject(s: string): string {
 
 export function buildRaw(o: { to: string; subject: string; body: string; inReplyTo?: string | null }): string {
   const lines = [
-    `To: ${o.to}`,
+    // Een concept zonder ontvanger mag: dan vul je die in Gmail zelf in.
+    ...(o.to.trim() ? [`To: ${o.to}`] : []),
     `Subject: ${encodeSubject(o.subject)}`,
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
