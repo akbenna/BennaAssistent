@@ -371,6 +371,8 @@ export interface OnderzoekThema {
   relevantie: "hoog" | "middel" | "laag";
   waarom: string;
   soort: "studie" | "richtlijn" | "overzicht" | "overig";
+  /** Ontbreekt bij thema's van vóór 9 oktober 2026. */
+  bron_soort?: "publicatie" | "congrespresentatie" | "persbericht" | "nieuws";
   bronnen: Array<{ titel: string; url: string }>;
   gekozen: boolean;
   opmerking: string;
