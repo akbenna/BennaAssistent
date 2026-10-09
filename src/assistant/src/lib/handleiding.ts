@@ -92,7 +92,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
         kop: "Verslag rondsturen en toezeggingen",
         tekst: [
           "Onder een nagelezen notitie staat Verslag als concept in Gmail. De assistent zet dan een mail klaar aan de genodigden van de afspraak: de eerste alinea van de samenvatting, de besluiten, per persoon de actiepunten, de vervolgafspraken en wat nog open is. De adressen komen uit je agenda; zonder afspraak vul je ze in Gmail zelf in. Er gaat niets vanzelf weg: je leest het concept na en verstuurt het daar.",
-          "Wat anderen toezegden, staat bij elkaar onder Toezeggingen, per persoon, met wat over tijd is bovenaan. Met Herinnering komt er een vriendelijke herinnering als concept in Gmail, aan het adres van die persoon als de naam eenduidig bij een genodigde past; anders vul je het zelf in. Met Afgehandeld verdwijnt de toezegging uit de lijst. Dat blijft zo, ook als je de notitie opnieuw laat samenvatten.",
+          "Wat anderen toezegden, staat bij elkaar onder de tegel Toezeggingen bovenaan Notities, per persoon, met wat over tijd is bovenaan. Met Herinnering komt er een vriendelijke herinnering als concept in Gmail, aan het adres van die persoon als de naam eenduidig bij een genodigde past; anders vul je het zelf in. Met Afgehandeld verdwijnt de toezegging uit de lijst. Dat blijft zo, ook als je de notitie opnieuw laat samenvatten.",
         ],
       },
       {
@@ -118,7 +118,7 @@ export const HOOFDSTUKKEN: Hoofdstuk[] = [
       {
         kop: "Nascholingslogboek",
         tekst: [
-          "Elke notitie van het soort Congres of webinar staat in het nascholingslogboek, te openen vanaf de lijst met notities. Per jaar zie je hoeveel bijeenkomsten het waren, hoeveel uur je opnam en hoeveel accreditatiepunten je hebt ingevuld. Organisator en punten vul je op de notitie zelf in; de uren zijn de opnametijd en dus niet per se de lengte van het programma.",
+          "Elke notitie van het soort Congres of webinar staat in het nascholingslogboek, onder de tegel Nascholing bovenaan Notities. Per jaar zie je hoeveel bijeenkomsten het waren, hoeveel uur je opnam en hoeveel accreditatiepunten je hebt ingevuld. Organisator en punten vul je op de notitie zelf in; de uren zijn de opnametijd en dus niet per se de lengte van het programma.",
           "Voor de herregistratie als huisarts telt 200 uur geaccrediteerde nascholing in vijf jaar, en dan wat de organisator in GAIA heeft bijgeschreven. Dit logboek vervangt GAIA niet. Het is je eigen administratie ernaast, met wat GAIA niet heeft: de onderwerpen, wat het voor de praktijk betekent en hoe de genoemde studies het hielden bij het nazoeken. Met Bewaar als CSV open je het in Excel; met Afdrukken maak je er een PDF van.",
         ],
       },

@@ -98,6 +98,13 @@ export function Notities() {
 
   return (
     <>
+      {/* Wat naast het opnemen staat, bovenaan en met een duim te raken. */}
+      <nav className="tegels" aria-label="Meer bij notities" style={{ marginBottom: "1rem" }}>
+        <Link className="tegel" to="/onderzoek"><b>Congres-agent</b><span>Laat een congres uitzoeken en kies wat je uitgewerkt wilt hebben</span></Link>
+        <Link className="tegel" to="/toezeggingen"><b>Toezeggingen</b><span>Wat anderen nog voor je moeten doen</span></Link>
+        <Link className="tegel" to="/nascholing"><b>Nascholing</b><span>Je logboek van congressen en webinars</span></Link>
+      </nav>
+
       <section className="sectie">
         <header><h2>Opnemen</h2></header>
         <div className="kaart">
@@ -139,11 +146,6 @@ export function Notities() {
         <header>
           <h2>Notities</h2>
           <span className="aantal">{lijst.data?.length || ""}</span>
-          <span style={{ marginLeft: "auto", display: "flex", gap: "0.8rem", flexWrap: "wrap" }}>
-            <Link className="mini" to="/toezeggingen">Toezeggingen</Link>
-            <Link className="mini" to="/onderzoek">Congres-agent</Link>
-            <Link className="mini" to="/nascholing">Nascholingslogboek</Link>
-          </span>
         </header>
         {(labels.data ?? []).length > 0 && (
           <div className="chips" role="radiogroup" aria-label="Filter op label" style={{ marginBottom: "0.5rem" }}>
