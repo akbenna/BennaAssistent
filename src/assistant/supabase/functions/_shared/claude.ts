@@ -1,6 +1,6 @@
 import { env } from "./core.ts";
 
-export const TRIAGE_MODEL = () => Deno.env.get("CLAUDE_TRIAGE_MODEL") ?? "claude-haiku-4-5-20251001";
+export const TRIAGE_MODEL = () => Deno.env.get("CLAUDE_TRIAGE_MODEL") ?? "claude-haiku-5-5";
 export const WRITE_MODEL = () => Deno.env.get("CLAUDE_WRITE_MODEL") ?? "claude-sonnet-5";
 
 /** Wat een aanroep heeft gekost. Gaat mee het logboek in, zodat de rekening
@@ -15,7 +15,21 @@ export interface Antwoord {
   verbruik: Verbruik;
 }
 
+/**
+ * Het snelle model denkt standaard na, en dat denken komt uit hetzelfde
+ * max_tokens als het antwoord. Bij de triage (400) kan het denken het budget
+ * opeten, en dan wordt het JSON-object afgekapt. Daarom gaat het denken uit bij
+ * de Haiku-modellen: die accepteren `disabled` (Haiku 5.5 bij de standaard
+ * inspanning, Haiku 4.5 altijd). Andere modellen krijgen niets mee, want een
+ * deel ervan (Opus 5.5, Sonnet 5.5) weigert `disabled` met een 400; zo breekt
+ * een via CLAUDE_TRIAGE_MODEL ingesteld ander model niet.
+ */
+export function denkInstelling(model: string): { type: "disabled" } | undefined {
+  return /haiku/i.test(model) ? { type: "disabled" } : undefined;
+}
+
 async function call(model: string, system: string, user: string, maxTokens: number): Promise<Antwoord> {
+  const thinking = denkInstelling(model);
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -23,7 +37,16 @@ async function call(model: string, system: string, user: string, maxTokens: numb
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      // Automatische prompt-caching: kost niets als het voorvoegsel te kort is
+      // om te cachen, en scheelt bij herhaalde systeemprompts.
+      cache_control: { type: "ephemeral" },
+      ...(thinking ? { thinking } : {}),
+      system,
+      messages: [{ role: "user", content: user }],
+    }),
   });
   const j = await r.json();
   if (!r.ok) throw new Error(`Claude ${r.status}: ${JSON.stringify(j)}`);
